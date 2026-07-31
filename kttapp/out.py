@@ -44,12 +44,12 @@ class OutList(APIView):
             if not account_rows:
                 return Response({"error": "User not found"}, status=404)
 
-            MailBoxId = account_rows[0]["MailBoxId"] 
+            MailBoxId = account_rows[0]["MailBoxId"]
 
             show_all = request.query_params.get("all", "false").lower() == "true"
 
             base_select = """
-                SELECT  
+                SELECT
                     t1.Id AS ID,
                     t1.JobId,
                     t1.PermitId,
@@ -58,35 +58,67 @@ class OutList(APIView):
                     SUBSTRING(t1.DeclarationType, 1, CHARINDEX(':', t1.DeclarationType) - 1) AS DECTYPE,
                     t1.TouchUser AS CREATE_USER,
                     t1.TradeNetMailboxID AS DECID,
-                    CONVERT(varchar, t1.ArrivalDate, 105) AS ETA,
+                    CONVERT(varchar, t1.DepartureDate, 105) AS ETA,
                     t1.PermitNumber AS PERMITNO,
                     i.Name + ' ' + i.Name1 AS EXPORTER,
-                    t1.HBL AS HAWB,
-                    CASE  
-                        WHEN t1.InwardTransportMode = '4 : Air' THEN t1.MasterAirwayBill  
-                        WHEN t1.InwardTransportMode = '1 : Sea' THEN t1.OceanBillofLadingNo  
-                        ELSE '' 
+
+                    -- HAWB: aggregate all item-level OutHAWBOBL values for this permit
+                    -- (mirrors legacy outListTable behaviour, which pulled this from
+                    -- OutItemDtl; here we pull it from CommonItemDtl instead)
+                    STUFF((
+                        SELECT DISTINCT ', ' + ci.OutHAWBOBL
+                        FROM CommonItemDtl ci
+                        WHERE ci.PermitId = t1.PermitId
+                          AND ci.OutHAWBOBL IS NOT NULL
+                          AND ci.OutHAWBOBL != ''
+                        FOR XML PATH('')
+                    ), 1, 2, '') AS HAWB,
+
+                    CASE
+                        WHEN t1.OutwardTransportMode = '4 : Air' THEN t1.OutMasterAirwayBill
+                        WHEN t1.OutwardTransportMode = '1 : Sea' THEN t1.OutOceanBillofLadingNo
+                        ELSE ''
                     END AS MAWBOBL,
+
                     t1.LoadingPortCode AS POL,
+
+                    -- Previously missing fields the frontend columns config expects
+                    t1.DischargePort AS POD,
+                    CASE
+                        WHEN t1.COType = '--Select--' THEN ''
+                        ELSE ISNULL(t1.COType, '')
+                    END AS COTYPE,
+                    CASE
+                        WHEN t1.CerDetailtype1 = '--Select--' THEN ''
+                        ELSE ISNULL(t1.CerDetailtype1, '')
+                    END AS CERTTYPE,
+                    t1.CertificateNumber AS CERTNO,
+
                     t1.MessageType AS MSGTYPE,
-                    t1.InwardTransportMode AS TPT,
+                    t1.OutwardTransportMode AS TPT,
                     t1.PreviousPermit AS PREPMT,
                     t1.GrossReference AS XREF,
                     t1.InternalRemarks AS INTREM,
                     t1.Message As MSG,
                     t1.TotalGSTTaxAmt AS GSTAMT,
                     t1.Status,
-                    CASE  
-                        WHEN t1.Status = 'APR' THEN 
-                            CASE  
+
+                    -- REL / RCL: inferred as ReleaseLocation / RecepitLocation
+                    -- (confirm with the frontend team if this mapping is wrong)
+                    t1.ReleaseLocation AS REL,
+                    t1.RecepitLocation AS RCL,
+
+                    CASE
+                        WHEN t1.Status = 'APR' THEN
+                            CASE
                                 WHEN EXISTS (
-                                    SELECT 1 FROM CommonPMT p 
-                                    WHERE p.PermitNumber = t1.PermitNumber 
+                                    SELECT 1 FROM CommonPMT p
+                                    WHERE p.PermitNumber = t1.PermitNumber
                                     AND p.ConditionCode IN ('Z02','Z18','Z06')
                                 ) THEN 'RED'
                                 WHEN EXISTS (
-                                    SELECT 1 FROM CommonPMT p 
-                                    WHERE p.PermitNumber = t1.PermitNumber 
+                                    SELECT 1 FROM CommonPMT p
+                                    WHERE p.PermitNumber = t1.PermitNumber
                                     AND p.ConditionCode IN ('D6','D3')
                                 ) THEN 'MAROON'
                                 ELSE 'DEFAULT'
@@ -96,7 +128,6 @@ class OutList(APIView):
                 FROM CommonHeaderTbl t1
                 LEFT JOIN CommonExporter i ON t1.ExporterCompanyCode = i.Code
             """
-            # ↑ ManageUser JOIN completely REMOVED
 
             if show_all:
                 query = base_select + """
@@ -123,7 +154,6 @@ class OutList(APIView):
         except Exception as e:
             traceback.print_exc()
             return Response({"error": str(e)}, status=500)
-
 # New Permit
 class OutNewPermit(APIView):
     def get(self, request):

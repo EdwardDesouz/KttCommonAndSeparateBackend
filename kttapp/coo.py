@@ -58,7 +58,7 @@ class CooList(APIView):
                     SUBSTRING(t1.DeclarationType, 1, CHARINDEX(':', t1.DeclarationType) - 1) AS DECTYPE,
                     t1.TouchUser AS CREATE_USER,
                     t1.TradeNetMailboxID AS DECID,
-                    CONVERT(varchar, t1.ArrivalDate, 105) AS ETA,
+                    CONVERT(varchar, t1.DepartureDate, 105) AS ETD,
                     t1.PermitNumber AS PERMITNO,
                     i.Name + ' ' + i.Name1 AS EXPORTER,
                     t1.HBL AS HAWB,
@@ -67,9 +67,19 @@ class CooList(APIView):
                         WHEN t1.InwardTransportMode = '1 : Sea' THEN t1.OceanBillofLadingNo  
                         ELSE '' 
                     END AS MAWBOBL,
-                    t1.LoadingPortCode AS POL,
+                    t1.DischargePort AS POD,
+                    CASE 
+                    WHEN CHARINDEX(':', t1.COType) > 0 
+                    THEN RTRIM(SUBSTRING(t1.COType, 1, CHARINDEX(':', t1.COType) - 1))
+                    ELSE t1.COType 
+                    END AS CoType,
+                    CASE 
+                    WHEN CHARINDEX(':', t1.CerDetailtype1) > 0 
+                    THEN RTRIM(SUBSTRING(t1.CerDetailtype1, 1, CHARINDEX(':', t1.CerDetailtype1) - 1))
+                    ELSE t1.CerDetailtype1 
+                    END AS CerDetailtype1,
                     t1.MessageType AS MSGTYPE,
-                    t1.InwardTransportMode AS TPT,
+                    t1.OutwardTransportMode AS TPT,
                     t1.PreviousPermit AS PREPMT,
                     t1.GrossReference AS XREF,
                     t1.InternalRemarks AS INTREM,

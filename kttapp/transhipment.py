@@ -57,9 +57,9 @@ class TransList(APIView):
                     SUBSTRING(t1.DeclarationType, 1, CHARINDEX(':', t1.DeclarationType) - 1) AS DECTYPE,
                     t1.TouchUser AS CREATE_USER,
                     t1.TradeNetMailboxID AS DECID,
-                    CONVERT(varchar, t1.ArrivalDate, 105) AS ETA,
+                    CONVERT(varchar, t1.DepartureDate, 105) AS ETA,
                     t1.PermitNumber AS PERMITNO,
-                    i.Name + ' ' + i.Name1 AS EXPORTER,
+                    i.Name + ' ' + i.Name1 AS IMPORTER,
                     t1.HBL AS HAWB,
                     CASE  
                         WHEN t1.InwardTransportMode = '4 : Air' THEN t1.MasterAirwayBill  
@@ -93,7 +93,7 @@ class TransList(APIView):
                         ELSE 'DEFAULT'
                     END AS COLOR
                 FROM CommonHeaderTbl t1
-                LEFT JOIN CommonExporter i ON t1.ExporterCompanyCode = i.Code
+                LEFT JOIN CommonImporter i ON t1.ImporterCompanyCode = i.Code
             """
             # ↑ ManageUser JOIN completely REMOVED
 

@@ -3835,3 +3835,131 @@ class CopyInpayment(APIView):
                 "SUCCESS": False,
                 "error": str(e)
             }, status=500)
+
+
+
+class OutList(APIView):
+    def get(self, request):
+        try:
+            Username = request.query_params.get("user") or request.session.get("Username")
+            if not Username:
+                return Response({"error": "Username required"}, status=400)
+
+            # Get logged in user's MailBoxId
+            account_rows = SqlDb.execute_query(
+                "SELECT AccountId, MailBoxId FROM ManageUser WHERE UserName = %s",
+                [Username]
+            )
+            if not account_rows:
+                return Response({"error": "User not found"}, status=404)
+
+            MailBoxId = account_rows[0]["MailBoxId"]
+
+            show_all = request.query_params.get("all", "false").lower() == "true"
+
+            base_select = """
+                SELECT
+                    t1.Id AS ID,
+                    t1.JobId,
+                    t1.PermitId,
+                    t1.MSGId,
+                    CONVERT(varchar, t1.TouchTime, 105) AS DECDATE,
+                    SUBSTRING(t1.DeclarationType, 1, CHARINDEX(':', t1.DeclarationType) - 1) AS DECTYPE,
+                    t1.TouchUser AS CREATE_USER,
+                    t1.TradeNetMailboxID AS DECID,
+                    CONVERT(varchar, t1.ArrivalDate, 105) AS ETA,
+                    t1.PermitNumber AS PERMITNO,
+                    i.Name + ' ' + i.Name1 AS EXPORTER,
+
+                    -- HAWB: aggregate all item-level OutHAWBOBL values for this permit
+                    -- (mirrors legacy outListTable behaviour, which pulled this from
+                    -- OutItemDtl; here we pull it from CommonItemDtl instead)
+                    STUFF((
+                        SELECT DISTINCT ', ' + ci.OutHAWBOBL
+                        FROM CommonItemDtl ci
+                        WHERE ci.PermitId = t1.PermitId
+                          AND ci.OutHAWBOBL IS NOT NULL
+                          AND ci.OutHAWBOBL != ''
+                        FOR XML PATH('')
+                    ), 1, 2, '') AS HAWB,
+
+                    CASE
+                        WHEN t1.InwardTransportMode = '4 : Air' THEN t1.MasterAirwayBill
+                        WHEN t1.InwardTransportMode = '1 : Sea' THEN t1.OceanBillofLadingNo
+                        ELSE ''
+                    END AS MAWBOBL,
+
+                    t1.LoadingPortCode AS POL,
+
+                    -- Previously missing fields the frontend columns config expects
+                    t1.DischargePort AS POD,
+                    CASE
+                        WHEN t1.COType = '--Select--' THEN ''
+                        ELSE ISNULL(t1.COType, '')
+                    END AS COTYPE,
+                    CASE
+                        WHEN t1.CerDetailtype1 = '--Select--' THEN ''
+                        ELSE ISNULL(t1.CerDetailtype1, '')
+                    END AS CERTTYPE,
+                    t1.CertificateNumber AS CERTNO,
+
+                    t1.MessageType AS MSGTYPE,
+                    t1.InwardTransportMode AS TPT,
+                    t1.PreviousPermit AS PREPMT,
+                    t1.GrossReference AS XREF,
+                    t1.InternalRemarks AS INTREM,
+                    t1.Message As MSG,
+                    t1.TotalGSTTaxAmt AS GSTAMT,
+                    t1.Status,
+
+                    -- REL / RCL: inferred as ReleaseLocation / RecepitLocation
+                    -- (confirm with the frontend team if this mapping is wrong)
+                    t1.ReleaseLocation AS REL,
+                    t1.RecepitLocation AS RCL,
+
+                    CASE
+                        WHEN t1.Status = 'APR' THEN
+                            CASE
+                                WHEN EXISTS (
+                                    SELECT 1 FROM CommonPMT p
+                                    WHERE p.PermitNumber = t1.PermitNumber
+                                    AND p.ConditionCode IN ('Z02','Z18','Z06')
+                                ) THEN 'RED'
+                                WHEN EXISTS (
+                                    SELECT 1 FROM CommonPMT p
+                                    WHERE p.PermitNumber = t1.PermitNumber
+                                    AND p.ConditionCode IN ('D6','D3')
+                                ) THEN 'MAROON'
+                                ELSE 'DEFAULT'
+                            END
+                        ELSE 'DEFAULT'
+                    END AS COLOR
+                FROM CommonHeaderTbl t1
+                LEFT JOIN CommonExporter i ON t1.ExporterCompanyCode = i.Code
+            """
+
+            if show_all:
+                query = base_select + """
+                    WHERE t1.TradeNetMailboxID = %s
+                    AND t1.MessageType = 'OUTDEC'
+                    ORDER BY t1.Id DESC
+                """
+                result = SqlDb.execute_query(query, [MailBoxId])
+
+            else:
+                nowdate = datetime.now() - timedelta(days=90)
+                date_filter = nowdate.strftime("%Y/%m/%d")
+
+                query = base_select + """
+                    WHERE t1.TradeNetMailboxID = %s
+                    AND t1.MessageType = 'OUTDEC'
+                    AND CONVERT(varchar, t1.TouchTime, 111) >= %s
+                    ORDER BY t1.Id DESC
+                """
+                result = SqlDb.execute_query(query, [MailBoxId, date_filter])
+
+            return Response(result)
+
+        except Exception as e:
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=500)
