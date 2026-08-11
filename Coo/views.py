@@ -446,26 +446,269 @@ class DeleteCooItem(APIView):
             "Records": records
         })
 
-class PostCooItemTable(APIView):
-    table = "COItemDtl"
+# class PostCooItemTable(APIView):
+#     table = "COItemDtl"
 
+#     allowed_columns = [
+#         "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "Contry",
+#         "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
+#         "TotalLineAmount", "CIFFOB", "InvoiceQty", "HSQTY", "HSUOM", "ShippingMark",
+#         "CerItemQty", "CerItemUOM", "ManfCostDate", "TextileCat", "TextileQuotaQty",
+#         "TextileQuotaQtyUOM", "ItemValue", "InvoiceNumber", "InvoiceDate", "HSOnCer",
+#         "OriginCriterion", "PerOrgainCRI", "CertificateDes", "TouchTime", "Hawblno",
+#         # "TouchUser" intentionally excluded here — real column is "Touch_user"
+#         # (underscore). It's added via COLUMN_ALIASES below so payloads using
+#         # either key still map to the correct DB column.
+#         "Touch_user",
+#     ]
+
+#     # Maps mismatched payload keys -> real COItemDtl column names
+#     COLUMN_ALIASES = {
+#         "TouchUser": "Touch_user",       # DB column has an underscore
+#     }
+
+#     def post(self, request):
+#         payloads = request.data
+#         if not payloads:
+#             return Response({"error": "No data provided"}, status=400)
+#         if not isinstance(payloads, list):
+#             payloads = [payloads]
+
+#         permit_id = None
+#         action = ""
+
+#         try:
+#             with connections['default'].cursor() as cursor:
+#                 for item in payloads:
+#                     if not isinstance(item, dict):
+#                         item = dict(item)
+#                     item.pop("Id", None)
+
+#                     # Normalize mismatched keys to real column names
+#                     for src, dest in self.COLUMN_ALIASES.items():
+#                         if src in item:
+#                             item[dest] = item.pop(src)
+
+#                     columns = [k for k in item.keys() if k in self.allowed_columns]
+#                     if not columns:
+#                         continue
+
+#                     permit_id = item.get("PermitId")
+#                     item_no = item.get("ItemNo")
+#                     if not permit_id or not item_no:
+#                         return Response(
+#                             {"error": "PermitId and ItemNo are required"},
+#                             status=400
+#                         )
+
+#                     cursor.execute(
+#                         f"""
+#                         SELECT COUNT(*)
+#                         FROM {self.table}
+#                         WHERE PermitId=%s AND ItemNo=%s
+#                         """,
+#                         [permit_id, item_no]
+#                     )
+#                     exists = cursor.fetchone()[0] > 0
+
+#                     if exists:
+#                         update_columns = [
+#                             col for col in columns
+#                             if col not in ["PermitId", "ItemNo"]
+#                         ]
+#                         if update_columns:
+#                             set_clause = ", ".join(
+#                                 [f"{col}=%s" for col in update_columns]
+#                             )
+#                             values = [item[col] for col in update_columns]
+#                             values += [permit_id, item_no]
+#                             query = f"""
+#                             UPDATE {self.table}
+#                             SET {set_clause}
+#                             WHERE PermitId=%s AND ItemNo=%s
+#                             """
+#                             cursor.execute(query, values)
+#                         action = "updated"
+#                     else:
+#                         placeholders = ", ".join(["%s"] * len(columns))
+#                         values = [item[col] for col in columns]
+#                         query = f"""
+#                         INSERT INTO {self.table}
+#                         ({", ".join(columns)})
+#                         VALUES ({placeholders})
+#                         """
+#                         cursor.execute(query, values)
+#                         action = "inserted"
+
+#                 connections['default'].commit()
+
+#         except Exception as e:
+#             return Response(
+#                 {"error": f"Error saving record: {str(e)}"},
+#                 status=400
+#             )
+
+#         try:
+#             with connections['default'].cursor() as cursor:
+#                 fetch_columns = ", ".join(self.allowed_columns)
+
+#                 cursor.execute(
+#                     f"""
+#                     SELECT {fetch_columns}
+#                     FROM {self.table}
+#                     WHERE PermitId=%s
+#                     ORDER BY ItemNo
+#                     """,
+#                     [permit_id]
+#                 )
+
+#                 rows = cursor.fetchall()
+
+#                 records = [
+#                     dict(zip(self.allowed_columns, row))
+#                     for row in rows
+#                 ]
+
+#         except Exception:
+#             records = []
+
+#         return Response(
+#             {
+#                 "Result": f"Item {action} successfully",
+#                 "Records": records
+#             },
+#             status=201
+#         )
+
+class PostCooItemTable(APIView):
+    """
+    Saves item to CommonItemDtl first (source of truth), then reads back
+    exactly what was persisted and mirrors THAT into COItemDtl — not the
+    raw payload. Same pattern as PostOutItemTable / PostTransItemTable.
+
+    COItemDtl is a much smaller table than CommonItemDtl — it only carries
+    Certificate-of-Origin-relevant fields, several under different names
+    (see MIRROR_COLUMN_MAP, taken directly from SyncCooItemFromCommon's
+    proven column pairing). Fields with no COO equivalent (DutiableQty,
+    GST/duty fields, packing, vehicle, lot, casc-adjacent shipping marks
+    2-4, etc.) are saved to Common but simply not mirrored.
+    """
+    common_table = "CommonItemDtl"
+    out_table = "COItemDtl"
+
+    # Full CommonItemDtl column set the COO Item page can send
     allowed_columns = [
-        "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "Contry",
-        "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
-        "TotalLineAmount", "CIFFOB", "InvoiceQty", "HSQTY", "HSUOM", "ShippingMark",
-        "CerItemQty", "CerItemUOM", "ManfCostDate", "TextileCat", "TextileQuotaQty",
-        "TextileQuotaQtyUOM", "ItemValue", "InvoiceNumber", "InvoiceDate", "HSOnCer",
-        "OriginCriterion", "PerOrgainCRI", "CertificateDes", "TouchTime", "Hawblno",
-        # "TouchUser" intentionally excluded here — real column is "Touch_user"
-        # (underscore). It's added via COLUMN_ALIASES below so payloads using
-        # either key still map to the correct DB column.
-        "Touch_user",
+        "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "DGIndicator", "Contry",
+        "EndUserDescription", "Brand", "Model", "InHAWBOBL", "OutHAWBOBL", "DutiableQty", "DutiableUOM",
+        "TotalDutiableQty", "TotalDutiableUOM", "InvoiceQuantity", "HSQty", "HSUOM", "AlcoholPer", "InvoiceNo",
+        "ChkUnitPrice", "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
+        "TotalLineAmount", "InvoiceCharges", "CIFFOB", "OPQty", "OPUOM", "IPQty", "IPUOM",
+        "InPqty", "InPUOM", "ImPQty", "ImPUOM", "PreferentialCode", "GSTRate", "GSTUOM", "GSTAmount",
+        "ExciseDutyRate", "ExciseDutyUOM", "ExciseDutyAmount", "CustomsDutyRate", "CustomsDutyUOM", "CustomsDutyAmount",
+        "OtherTaxRate", "OtherTaxUOM", "OtherTaxAmount", "CurrentLot", "PreviousLot", "LSPValue", "Making",
+        "ShippingMarks1", "ShippingMarks2", "ShippingMarks3", "ShippingMarks4",
+        "CerItemQty", "CerItemUOM", "CIFValOfCer", "ManufactureCostDate", "TexCat", "TexQuotaQty", "TexQuotaUOM",
+        "CerInvNo", "CerInvDate", "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
+        "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge",
+        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
     ]
 
-    # Maps mismatched payload keys -> real COItemDtl column names
-    COLUMN_ALIASES = {
-        "TouchUser": "Touch_user",       # DB column has an underscore
+    # CommonItemDtl column name -> COItemDtl column name.
+    # Pairing taken from SyncCooItemFromCommon.COMMON_ITEM_COLUMNS/COO_ITEM_COLUMNS —
+    # everything not listed here has no column on COItemDtl and is not mirrored.
+    MIRROR_COLUMN_MAP = {
+        "ItemNo": "ItemNo",
+        "PermitId": "PermitId",
+        "MessageType": "MessageType",
+        "HSCode": "HSCode",
+        "Description": "Description",
+        "Contry": "Contry",
+        "UnitPrice": "UnitPrice",
+        "UnitPriceCurrency": "UnitPriceCurrency",
+        "ExchangeRate": "ExchangeRate",
+        "SumExchangeRate": "SumExchangeRate",
+        "TotalLineAmount": "TotalLineAmount",
+        "CIFFOB": "CIFFOB",
+        "InvoiceQuantity": "InvoiceQty",
+        "HSQty": "HSQTY",
+        "HSUOM": "HSUOM",
+        "ShippingMarks1": "ShippingMark",
+        "CerItemQty": "CerItemQty",
+        "CerItemUOM": "CerItemUOM",
+        "ManufactureCostDate": "ManfCostDate",
+        "TexCat": "TextileCat",
+        "TexQuotaQty": "TextileQuotaQty",
+        "TexQuotaUOM": "TextileQuotaQtyUOM",
+        "CIFValOfCer": "ItemValue",
+        "CerInvNo": "InvoiceNumber",
+        "CerInvDate": "InvoiceDate",
+        "HSCodeCer": "HSOnCer",
+        "OriginOfCer": "OriginCriterion",
+        "PerContent": "PerOrgainCRI",
+        "CertificateDescription": "CertificateDes",
+        "TouchUser": "Touch_user",
+        "TouchTime": "TouchTime",
+        "InHAWBOBL": "Hawblno",
     }
+
+    def _upsert_common(self, cursor, columns, item, permit_id, item_no):
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {self.common_table} WHERE PermitId=%s AND ItemNo=%s",
+            [permit_id, item_no]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            update_cols = [c for c in columns if c not in ("PermitId", "ItemNo")]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [item.get(c) for c in update_cols] + [permit_id, item_no]
+            cursor.execute(
+                f"UPDATE {self.common_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
+                values
+            )
+            return "updated"
+        else:
+            placeholders = ", ".join(["%s"] * len(columns))
+            values = [item.get(c) for c in columns]
+            cursor.execute(
+                f"INSERT INTO {self.common_table} ({', '.join(columns)}) VALUES ({placeholders})",
+                values
+            )
+            return "inserted"
+
+    def _mirror_to_out(self, cursor, saved_row, permit_id, item_no):
+        """
+        Upsert COItemDtl using the row actually persisted in CommonItemDtl
+        (fetched fresh) — not the original request payload. Renames columns
+        per MIRROR_COLUMN_MAP.
+        """
+        mirror_item = {
+            dest_col: saved_row.get(src_col)
+            for src_col, dest_col in self.MIRROR_COLUMN_MAP.items()
+        }
+        mirror_cols = list(mirror_item.keys())
+
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {self.out_table} WHERE PermitId=%s AND ItemNo=%s",
+            [permit_id, item_no]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            update_cols = [c for c in mirror_cols if c not in ("PermitId", "ItemNo")]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [mirror_item.get(c) for c in update_cols] + [permit_id, item_no]
+            cursor.execute(
+                f"UPDATE {self.out_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
+                values
+            )
+        else:
+            placeholders = ", ".join(["%s"] * len(mirror_cols))
+            values = [mirror_item.get(c) for c in mirror_cols]
+            cursor.execute(
+                f"INSERT INTO {self.out_table} ({', '.join(mirror_cols)}) VALUES ({placeholders})",
+                values
+            )
 
     def post(self, request):
         payloads = request.data
@@ -475,7 +718,8 @@ class PostCooItemTable(APIView):
             payloads = [payloads]
 
         permit_id = None
-        action = ""
+        common_action = "processed"
+        out_failed = None
 
         try:
             with connections['default'].cursor() as cursor:
@@ -484,12 +728,7 @@ class PostCooItemTable(APIView):
                         item = dict(item)
                     item.pop("Id", None)
 
-                    # Normalize mismatched keys to real column names
-                    for src, dest in self.COLUMN_ALIASES.items():
-                        if src in item:
-                            item[dest] = item.pop(src)
-
-                    columns = [k for k in item.keys() if k in self.allowed_columns]
+                    columns = [k for k in self.allowed_columns if k in item]
                     if not columns:
                         continue
 
@@ -497,88 +736,58 @@ class PostCooItemTable(APIView):
                     item_no = item.get("ItemNo")
                     if not permit_id or not item_no:
                         return Response(
-                            {"error": "PermitId and ItemNo are required"},
-                            status=400
+                            {"error": "PermitId and ItemNo are required"}, status=400
                         )
 
+                    # Step 1: Save to CommonItemDtl (source of truth)
+                    common_action = self._upsert_common(
+                        cursor, columns, item, permit_id, item_no
+                    )
+
+                    # Step 2: Read back EXACTLY what was persisted
+                    fetch_cols = ", ".join(self.allowed_columns)
                     cursor.execute(
-                        f"""
-                        SELECT COUNT(*)
-                        FROM {self.table}
-                        WHERE PermitId=%s AND ItemNo=%s
-                        """,
+                        f"SELECT {fetch_cols} FROM {self.common_table} "
+                        f"WHERE PermitId=%s AND ItemNo=%s",
                         [permit_id, item_no]
                     )
-                    exists = cursor.fetchone()[0] > 0
+                    row = cursor.fetchone()
+                    saved_row = dict(zip(self.allowed_columns, row)) if row else item
 
-                    if exists:
-                        update_columns = [
-                            col for col in columns
-                            if col not in ["PermitId", "ItemNo"]
-                        ]
-                        if update_columns:
-                            set_clause = ", ".join(
-                                [f"{col}=%s" for col in update_columns]
-                            )
-                            values = [item[col] for col in update_columns]
-                            values += [permit_id, item_no]
-                            query = f"""
-                            UPDATE {self.table}
-                            SET {set_clause}
-                            WHERE PermitId=%s AND ItemNo=%s
-                            """
-                            cursor.execute(query, values)
-                        action = "updated"
-                    else:
-                        placeholders = ", ".join(["%s"] * len(columns))
-                        values = [item[col] for col in columns]
-                        query = f"""
-                        INSERT INTO {self.table}
-                        ({", ".join(columns)})
-                        VALUES ({placeholders})
-                        """
-                        cursor.execute(query, values)
-                        action = "inserted"
+                    # Step 3: Mirror that persisted row into COItemDtl
+                    try:
+                        self._mirror_to_out(cursor, saved_row, permit_id, item_no)
+                    except Exception as mirror_err:
+                        out_failed = str(mirror_err)
 
                 connections['default'].commit()
 
         except Exception as e:
-            return Response(
-                {"error": f"Error saving record: {str(e)}"},
-                status=400
-            )
+            return Response({"error": f"Error saving record: {str(e)}"}, status=400)
 
         try:
             with connections['default'].cursor() as cursor:
                 fetch_columns = ", ".join(self.allowed_columns)
-
                 cursor.execute(
-                    f"""
-                    SELECT {fetch_columns}
-                    FROM {self.table}
-                    WHERE PermitId=%s
-                    ORDER BY ItemNo
-                    """,
+                    f"SELECT {fetch_columns} FROM {self.common_table} "
+                    f"WHERE PermitId=%s ORDER BY ItemNo",
                     [permit_id]
                 )
-
                 rows = cursor.fetchall()
-
-                records = [
-                    dict(zip(self.allowed_columns, row))
-                    for row in rows
-                ]
-
+                records = [dict(zip(self.allowed_columns, row)) for row in rows]
         except Exception:
             records = []
 
-        return Response(
-            {
-                "Result": f"Item {action} successfully",
-                "Records": records
-            },
-            status=201
-        )
+        response_data = {
+            "Result": f"Item {common_action} successfully (mirrored to COItemDtl)",
+            "Records": records,
+        }
+        if out_failed:
+            response_data["Warning"] = (
+                f"Saved to CommonItemDtl but mirror to COItemDtl failed: {out_failed}"
+            )
+
+        return Response(response_data, status=201)
 
 
 class EditCooItemByItemNo(APIView):

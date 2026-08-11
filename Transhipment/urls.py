@@ -227,6 +227,9 @@ urlpatterns = [
 
 path('syncTransItemFromCommon/', views.SyncTransItemFromCommon.as_view()),
 
+# PostItemwithcasc
+
+path('postTransItemWithCasc/', views.PostTransItemWithCascTable.as_view()),
 
 ]
 

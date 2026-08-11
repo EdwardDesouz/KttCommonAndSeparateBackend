@@ -224,7 +224,9 @@ urlpatterns = [
 # #     path("getExchangeRateByDate/",views.GetExchangeRateByDate.as_view()),
 path('syncOutItemFromCommon/',views.SyncOutItemFromCommon.as_view()),
 
+# postitemwithcasc
 
+path('postOutItemWithCasc/', views.PostOutItemWithCascTable.as_view()),
 ]
 
 

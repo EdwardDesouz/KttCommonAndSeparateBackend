@@ -8238,19 +8238,19 @@ class XmlSubmit(APIView):
                         )
 
                     with connection.cursor() as cursor:
-                        cursor.execute("SELECT * FROM CommonInvoiceDtl WHERE PermitId = %s ORDER BY SNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonInvoiceDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         InvoiceData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                        cursor.execute("SELECT * FROM CommonItemDtl WHERE PermitId = %s ORDER BY ItemNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonItemDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         ItemData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                        cursor.execute("SELECT * FROM CommonContainerDtl WHERE PermitId = %s ORDER BY RowNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonContainerDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         ContainerData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                        cursor.execute("SELECT * FROM CommonCASCDtl WHERE PermitId = %s ORDER BY ItemNo, RowNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonCASCDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         CascData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -8270,19 +8270,19 @@ class XmlSubmit(APIView):
                 else:
                     # ── NORMAL DECLARATION SUBMISSION ──────────────────
                     with connection.cursor() as cursor:
-                        cursor.execute("SELECT * FROM CommonInvoiceDtl WHERE PermitId = %s ORDER BY SNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonInvoiceDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         InvoiceData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                        cursor.execute("SELECT * FROM CommonItemDtl WHERE PermitId = %s ORDER BY ItemNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonItemDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         ItemData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                        cursor.execute("SELECT * FROM CommonContainerDtl WHERE PermitId = %s ORDER BY RowNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonContainerDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         ContainerData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-                        cursor.execute("SELECT * FROM CommonCASCDtl WHERE PermitId = %s ORDER BY ItemNo, RowNo", [permitNumber])
+                        cursor.execute("SELECT * FROM CommonCASCDtl WHERE PermitId = %s", [permitNumber])
                         columns = [col[0] for col in cursor.description]
                         CascData = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -8759,13 +8759,12 @@ class XmlSubmit(APIView):
 
         self._prune(transport, module)
 
-
         # ─── PARTY ──────────────────────────────────────────────────
         party = SubElement(module, _q(prefix, "Party"))
 
         declarant = SubElement(party, _q("cac", "DeclarantParty"))
         person = SubElement(declarant, _q("cac", "PersonInformation"))
-        self._add(person, _q("cbc", "CodeValue"), DeclarantCompany.get("DeclarantCode"))
+        self._add(person, _q("cbc", "CodeValue"), head.get("DeclarantCompanyCode"))
         self._add(person, _q("cbc", "Name"), DeclarantCompany.get("DeclarantName"))
         self._prune(person, declarant)
         self._add(declarant, _q("cbc", "Telephone"), DeclarantCompany.get("DeclarantTel"))
@@ -8781,13 +8780,12 @@ class XmlSubmit(APIView):
         self._prune(agent_name, agent)
         self._prune(agent, party)
 
-        def _party_block(local_name, code, lookup_query, params, name_field, cruei_field, name1_field=None):
+        def _party_block(local_name, code, lookup_query, params, name_field, cruei_field):
             """Generic helper for the repeated 'look up code -> ID/Name party block' pattern."""
             if not code or str(code).strip() in ("", "--Select--"):
                 return
             rows = SqlDb.execute_query(lookup_query, params)
             name_val  = rows[0].get(name_field, "") if rows else ""
-            name1_val = rows[0].get(name1_field, "") if (rows and name1_field) else ""
             cruei_val = rows[0].get(cruei_field, "") if rows else ""
 
             block = SubElement(party, _q("cac", local_name))
@@ -8796,155 +8794,59 @@ class XmlSubmit(APIView):
             self._prune(pid, block)
             pname = SubElement(block, _q("cac", "PartyName"))
             self._add(pname, _q("cbc", "Name"), name_val)
-            self._add(pname, _q("cbc", "Name"), name1_val)
             self._prune(pname, block)
-            self._prune(block, party)
-
-        def _party_block_with_address(local_name, code, lookup_query, params,
-                                       name_field, cruei_field, name1_field=None,
-                                       addr_field=None, addr1_field=None,
-                                       city_field=None, subentity_code_field=None,
-                                       subentity_field=None, postal_field=None,
-                                       country_field=None,
-                                       use_party_detail_wrapper=False,
-                                       include_party_identification=True):
-
-
-            if not code or str(code).strip() in ("", "--Select--"):
-                return
-            rows = SqlDb.execute_query(lookup_query, params)
-            if not rows:
-                return
-            row = rows[0]
-
-            name_val  = row.get(name_field, "") or ""
-            name1_val = row.get(name1_field, "") if name1_field else ""
-            cruei_val = row.get(cruei_field, "") or ""
-
-            block = SubElement(party, _q("cac", local_name))
-
-            # ── Identification + Name, in schema sequence: ID before Name ──
-            id_name_parent = block
-            if use_party_detail_wrapper:
-                id_name_parent = SubElement(block, _q("cac", "PartyDetail"))
-
-            if include_party_identification:
-                pid = SubElement(id_name_parent, _q("cac", "PartyIdentification"))
-                self._add(pid, _q("cbc", "ID"), cruei_val)
-                self._prune(pid, id_name_parent)
-
-            pname = SubElement(id_name_parent, _q("cac", "PartyName"))
-            self._add(pname, _q("cbc", "Name"), name_val)
-            self._add(pname, _q("cbc", "Name"), name1_val)
-            self._prune(pname, id_name_parent)
-
-            if use_party_detail_wrapper:
-                self._prune(id_name_parent, block)
-
-            # ── Address — sibling after PartyDetail/PartyName ──
-            addr_line1  = _t(row.get(addr_field, "")).strip() if addr_field else ""
-            addr_line2  = _t(row.get(addr1_field, "")).strip() if addr1_field else ""
-            city_val    = _t(row.get(city_field, "")).strip() if city_field else ""
-            sub_code    = _t(row.get(subentity_code_field, "")).strip() if subentity_code_field else ""
-            sub_val     = _t(row.get(subentity_field, "")).strip() if subentity_field else ""
-            postal_val  = _t(row.get(postal_field, "")).strip() if postal_field else ""
-            country_val = _t(row.get(country_field, "")).strip() if country_field else ""
-
-            has_address_data = any([
-                addr_line1, addr_line2, city_val, sub_code, sub_val, postal_val, country_val
-            ])
-
-            if has_address_data:
-                addr = SubElement(block, _q("cac", "Address"))
-
-                addr_line_tag = "AddressLine" if local_name == "ConsigneeParty" else "Addressline"
-                addr_line_el = SubElement(addr, _q("cac", addr_line_tag))
-                self._add(addr_line_el, _q("cbc", "Line"), addr_line1)
-                self._add(addr_line_el, _q("cbc", "Line"), addr_line2)
-                self._prune(addr_line_el, addr)
-
-                self._add(addr, _q("cbc", "CityName"), city_val)
-                self._add(addr, _q("cbc", "CountrySubentityCode"), sub_code)
-                self._add(addr, _q("cbc", "CountrySubentity"), sub_val)
-                self._add(addr, _q("cbc", "PostalZone"), postal_val)
-                self._add(addr, _q("cbc", "CountryCode"), country_val)
-                self._prune(addr, block)
-
             self._prune(block, party)
 
         _party_block(
             "FreightForwarderParty", head.get("FreightForwarderCode"),
             "SELECT Name, Name1, CRUEI FROM CommonFreightForwarder WHERE Code = %s",
-            [head.get("FreightForwarderCode")], "Name", "CRUEI", "Name1"
+            [head.get("FreightForwarderCode")], "Name", "CRUEI"
         )
         _party_block(
             "InwardCarrierAgentParty",
             head.get("InwardCarrierAgentCode") or head.get("Inwardcarriercode"),
             "SELECT Name, Name1, CRUEI FROM CommonInwardCarrierAgent WHERE Code = %s",
-            [head.get("InwardCarrierAgentCode") or head.get("Inwardcarriercode")], "Name", "CRUEI", "Name1"
+            [head.get("InwardCarrierAgentCode") or head.get("Inwardcarriercode")], "Name", "CRUEI"
         )
         _party_block(
             "OutwardCarrierAgentParty", head.get("OutwardCarrierAgentCode"),
             "SELECT Name, Name1, CRUEI FROM CommonOutwardCarrierAgent WHERE Code = %s",
-            [head.get("OutwardCarrierAgentCode")], "Name", "CRUEI", "Name1"
-        )
-
-        _party_block_with_address(
-            "ExporterParty", head.get("ExporterCompanyCode"),
-            """SELECT Name, Name1, CRUEI, Address, Address1, City, SubCode, Sub, Postal, Country
-               FROM CommonExporter WHERE Code = %s""",
-            [head.get("ExporterCompanyCode")],
-            name_field="Name", cruei_field="CRUEI", name1_field="Name1",
-            addr_field="Address", addr1_field="Address1",
-            city_field="City",
-            subentity_code_field="SubCode", subentity_field="Sub",
-            postal_field="Postal", country_field="Country",
-            use_party_detail_wrapper=True,
-            include_party_identification=True,
+            [head.get("OutwardCarrierAgentCode")], "Name", "CRUEI"
         )
         _party_block(
             "ImporterParty", head.get("ImporterCompanyCode"),
             "SELECT Name, Name1, CRUEI FROM CommonImporter WHERE Code = %s",
-            [head.get("ImporterCompanyCode")], "Name", "CRUEI", "Name1"
+            [head.get("ImporterCompanyCode")], "Name", "CRUEI"
         )
-
-        _party_block_with_address(
+        _party_block(
             "ConsigneeParty", head.get("CONSIGNEECode"),
-            """SELECT ConsigneeName, ConsigneeName1, ConsigneeCRUEI,
-                      ConsigneeAddress, ConsigneeAddress1, ConsigneeCity,
-                      ConsigneeSubDivi, ConsigneeSub, ConsigneePostal, ConsigneeCountry
-               FROM CommonConsignee WHERE ConsigneeCode = %s""",
-            [head.get("CONSIGNEECode")],
-            name_field="ConsigneeName", cruei_field="ConsigneeCRUEI", name1_field="ConsigneeName1",
-            addr_field="ConsigneeAddress", addr1_field="ConsigneeAddress1",
-            city_field="ConsigneeCity",
-            subentity_code_field="ConsigneeSubDivi", subentity_field="ConsigneeSub",
-            postal_field="ConsigneePostal", country_field="ConsigneeCountry",
-            use_party_detail_wrapper=False,
-            include_party_identification=False,
+            "SELECT ConsigneeName, ConsigneeName1, ConsigneeCRUEI FROM CommonConsignee WHERE ConsigneeCode = %s",
+            [head.get("CONSIGNEECode")], "ConsigneeName", "ConsigneeCRUEI"
         )
-
         _party_block(
             "ClaimantParty", head.get("ClaimantPartyCode"),
             "SELECT ClaimantName, ClaimantName1, CRUEI FROM CommonClaimantParty WHERE ClaimantCode = %s",
-            [head.get("ClaimantPartyCode")], "ClaimantName", "CRUEI", "ClaimantName1"
+            [head.get("ClaimantPartyCode")], "ClaimantName", "CRUEI"
         )
-
         _party_block(
             "EndUserParty", head.get("EndUserCode"),
             "SELECT EndUserName, EndUserName1, EndUserCRUEI FROM CommonEndUser WHERE EndUserCode = %s",
-            [head.get("EndUserCode")], "EndUserName", "EndUserCRUEI", "EndUserName1"
+            [head.get("EndUserCode")], "EndUserName", "EndUserCRUEI"
         )
         _party_block(
             "ManufacturerParty", head.get("Manufacturer"),
             "SELECT ManufacturerName, ManufacturerName1, ManufacturerCRUEI FROM CommonManufacturer WHERE ManufacturerCode = %s",
-            [head.get("Manufacturer")], "ManufacturerName", "ManufacturerCRUEI", "ManufacturerName1"
+            [head.get("Manufacturer")], "ManufacturerName", "ManufacturerCRUEI"
         )
-
+        _party_block(
+            "ExporterParty", head.get("ExporterCompanyCode"),
+            "SELECT Name, Name1, CRUEI FROM CommonExporter WHERE Code = %s",
+            [head.get("ExporterCompanyCode")], "Name", "CRUEI"
+        )
         _party_block(
             "HandlingAgentParty", head.get("HandlingAgentCode"),
             "SELECT Name, Name1, CRUEI FROM CommonHandingAgent WHERE Code = %s",
-            [head.get("HandlingAgentCode")], "Name", "CRUEI", "Name1"
+            [head.get("HandlingAgentCode")], "Name", "CRUEI"
         )
 
         license_ref = _t(head.get("License")).strip()
@@ -9060,19 +8962,11 @@ class XmlSubmit(APIView):
             for casc in casc_by_item.get(it.get("ItemNo"), []):
                 casc_el = SubElement(item_el, _q("cac", "CASCProduct"))
                 self._add(casc_el, _q("cbc", "CASCProductCode"), casc.get("ProductCode"))
+                self._add_attr(
+                    casc_el, _q("cbc", "CASCProductQuantity"), casc.get("Quantity"),
+                    unitCode=casc.get("ProductUOM")
+                )
 
-                casc_qty = casc.get("Quantity")
-                casc_uom = _t(casc.get("ProductUOM")).strip()
-                try:
-                    qty_is_meaningful = casc_qty not in (None, "") and float(casc_qty) != 0
-                except (TypeError, ValueError):
-                    qty_is_meaningful = False
-
-                if qty_is_meaningful and casc_uom:
-                    self._add_attr(
-                        casc_el, _q("cbc", "CASCProductQuantity"), casc_qty,
-                        unitCode=casc_uom
-                    )
                 casc_code1 = _t(casc.get("CascCode1")).strip()
                 casc_code2 = _t(casc.get("CascCode2")).strip()
                 casc_code3 = _t(casc.get("CascCode3")).strip()
@@ -9093,12 +8987,7 @@ class XmlSubmit(APIView):
             if in_hawb:
                 self._add(item_el, _q("cbc", "InHAWBHUCRHBLNumber"), in_hawb)
 
-            out_hawb =_t(it.get("OutHAWBOBL")).strip()
-            if out_hawb:
-                self._add(item_el,_q("cbc", "OutHAWBHUCRHBLNumber"),out_hawb)
-
-            if message_type != "OUTDEC":
-                self._add(item_el, _q("cbc", "ItemInvoiceNumber"), it.get("InvoiceNo"))
+            self._add(item_el, _q("cbc", "ItemInvoiceNumber"), it.get("InvoiceNo"))
 
             if message_type in ("IPTDEC", "INPDEC"):
                 tariff = SubElement(item_el, _q("cac", "Tariff"))
@@ -14329,343 +14218,3 @@ class CopyCancel(APIView):
             import traceback
             traceback.print_exc()
             return Response({"error": f"Database Error: {str(e)}"}, status=400)
-
-
-# postitemwithcasc
-class PostItemWithCascTable(APIView):
-    """
-    Single-call replacement for PostItemTable + PostCascTable.
-    Payload = item fields as usual, plus "CascDatas": JSON string (or list)
-    of casc row dicts (same shape ItemCascSave() already builds on the frontend).
-
-    Flow, all inside one DB transaction:
-      1. Upsert item -> CommonItemDtl
-      2. Read back exactly what was persisted
-      3. Mirror that row -> ItemDtl
-      4. For each casc row: upsert -> CommonCASCDtl, read back, mirror -> CASCDtl
-    """
-    common_item_table = "CommonItemDtl"
-    in_item_table = "ItemDtl"
-    common_casc_table = "CommonCASCDtl"
-    in_casc_table = "CASCDtl"
-
-    item_allowed_columns = [
-        "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "DGIndicator", "Contry",
-        "EndUserDescription", "Brand", "Model", "InHAWBOBL", "OutHAWBOBL", "DutiableQty", "DutiableUOM",
-        "TotalDutiableQty", "TotalDutiableUOM", "InvoiceQuantity", "HSQty", "HSUOM", "AlcoholPer", "InvoiceNo",
-        "ChkUnitPrice", "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
-        "TotalLineAmount", "InvoiceCharges", "CIFFOB", "OPQty", "OPUOM", "IPQty", "IPUOM",
-        "InPqty", "InPUOM", "ImPQty", "ImPUOM", "PreferentialCode", "GSTRate", "GSTUOM", "GSTAmount",
-        "ExciseDutyRate", "ExciseDutyUOM", "ExciseDutyAmount", "CustomsDutyRate", "CustomsDutyUOM", "CustomsDutyAmount",
-        "OtherTaxRate", "OtherTaxUOM", "OtherTaxAmount", "CurrentLot", "PreviousLot", "LSPValue", "Making",
-        "ShippingMarks1", "ShippingMarks2", "ShippingMarks3", "ShippingMarks4",
-        "CerItemQty", "CerItemUOM", "CIFValOfCer", "ManufactureCostDate", "TexCat", "TexQuotaQty", "TexQuotaUOM",
-        "CerInvNo", "CerInvDate", "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
-        "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge",
-        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
-    ]
-
-    item_mirror_columns = [
-        "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "DGIndicator", "Contry",
-        "Brand", "Model", "InHAWBOBL", "DutiableQty", "DutiableUOM",
-        "TotalDutiableQty", "TotalDutiableUOM", "InvoiceQuantity", "HSQty", "HSUOM", "AlcoholPer", "InvoiceNo",
-        "ChkUnitPrice", "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
-        "TotalLineAmount", "InvoiceCharges", "CIFFOB", "OPQty", "OPUOM", "IPQty", "IPUOM",
-        "InPqty", "InPUOM", "ImPQty", "ImPUOM", "PreferentialCode", "GSTRate", "GSTUOM", "GSTAmount",
-        "ExciseDutyRate", "ExciseDutyUOM", "ExciseDutyAmount", "CustomsDutyRate", "CustomsDutyUOM", "CustomsDutyAmount",
-        "OtherTaxRate", "OtherTaxUOM", "OtherTaxAmount", "CurrentLot", "PreviousLot", "LSPValue", "Making",
-        "ShippingMarks1", "ShippingMarks2", "ShippingMarks3", "ShippingMarks4",
-        "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge",
-        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
-    ]
-
-    casc_allowed_columns = [
-        "ItemNo", "ProductCode", "Quantity", "ProductUOM", "RowNo",
-        "CascCode1", "CascCode2", "CascCode3", "PermitId", "MessageType",
-        "TouchUser", "TouchTime", "CASCId", "EndUserDes"
-    ]
-
-    casc_mirror_columns = [
-        "ItemNo", "ProductCode", "Quantity", "ProductUOM", "RowNo",
-        "CascCode1", "CascCode2", "CascCode3", "PermitId", "MessageType",
-        "TouchUser", "TouchTime", "CASCId"
-    ]
-
-    # ---------------- ITEM helpers ----------------
-
-    def _upsert_item(self, cursor, columns, item, permit_id, item_no):
-        cursor.execute(
-            f"SELECT COUNT(*) FROM {self.common_item_table} WHERE PermitId=%s AND ItemNo=%s",
-            [permit_id, item_no]
-        )
-        exists = cursor.fetchone()[0] > 0
-
-        if exists:
-            update_cols = [c for c in columns if c not in ("PermitId", "ItemNo")]
-            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
-            values = [item.get(c) for c in update_cols] + [permit_id, item_no]
-            cursor.execute(
-                f"UPDATE {self.common_item_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
-                values
-            )
-            return "updated"
-        else:
-            placeholders = ", ".join(["%s"] * len(columns))
-            values = [item.get(c) for c in columns]
-            cursor.execute(
-                f"INSERT INTO {self.common_item_table} ({', '.join(columns)}) VALUES ({placeholders})",
-                values
-            )
-            return "inserted"
-
-    def _mirror_item(self, cursor, saved_row, permit_id, item_no):
-        cursor.execute(
-            f"SELECT COUNT(*) FROM {self.in_item_table} WHERE PermitId=%s AND ItemNo=%s",
-            [permit_id, item_no]
-        )
-        exists = cursor.fetchone()[0] > 0
-
-        mirror_cols = [c for c in self.item_mirror_columns if c in saved_row]
-
-        if exists:
-            update_cols = [c for c in mirror_cols if c not in ("PermitId", "ItemNo")]
-            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
-            values = [saved_row.get(c) for c in update_cols] + [permit_id, item_no]
-            cursor.execute(
-                f"UPDATE {self.in_item_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
-                values
-            )
-        else:
-            placeholders = ", ".join(["%s"] * len(mirror_cols))
-            values = [saved_row.get(c) for c in mirror_cols]
-            cursor.execute(
-                f"INSERT INTO {self.in_item_table} ({', '.join(mirror_cols)}) VALUES ({placeholders})",
-                values
-            )
-
-    # ---------------- CASC helpers ----------------
-
-    def _upsert_casc(self, cursor, casc_item):
-        item_no = casc_item.get("ItemNo")
-        permit_id = casc_item.get("PermitId")
-        row_no = casc_item.get("RowNo")
-        casc_id = casc_item.get("CASCId")
-
-        cursor.execute(
-            f"""
-            SELECT COUNT(*) FROM {self.common_casc_table}
-            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
-            """,
-            [item_no, permit_id, row_no, casc_id]
-        )
-        exists = cursor.fetchone()[0] > 0
-
-        if exists:
-            cursor.execute(
-                f"""
-                UPDATE {self.common_casc_table}
-                SET
-                    ProductCode=%s,
-                    Quantity=%s,
-                    ProductUOM=%s,
-                    CascCode1=%s,
-                    CascCode2=%s,
-                    CascCode3=%s,
-                    TouchUser=%s,
-                    TouchTime=%s,
-                    EndUserDes=%s
-                WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
-                """,
-                [
-                    casc_item.get("ProductCode"),
-                    casc_item.get("Quantity"),
-                    casc_item.get("ProductUOM"),
-                    casc_item.get("CascCode1"),
-                    casc_item.get("CascCode2"),
-                    casc_item.get("CascCode3"),
-                    casc_item.get("TouchUser"),
-                    casc_item.get("TouchTime"),
-                    casc_item.get("EndUserDes"),
-                    item_no, permit_id, row_no, casc_id
-                ]
-            )
-            return "updated"
-        else:
-            columns = [c for c in self.casc_allowed_columns if c in casc_item]
-            placeholders = ", ".join(["%s"] * len(columns))
-            values = [casc_item.get(c) for c in columns]
-            cursor.execute(
-                f"INSERT INTO {self.common_casc_table} ({', '.join(columns)}) VALUES ({placeholders})",
-                values
-            )
-            return "inserted"
-
-    def _mirror_casc(self, cursor, saved_row):
-        item_no = saved_row.get("ItemNo")
-        permit_id = saved_row.get("PermitId")
-        row_no = saved_row.get("RowNo")
-        casc_id = saved_row.get("CASCId")
-
-        cursor.execute(
-            f"""
-            SELECT COUNT(*) FROM {self.in_casc_table}
-            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
-            """,
-            [item_no, permit_id, row_no, casc_id]
-        )
-        exists = cursor.fetchone()[0] > 0
-
-        mirror_cols = [c for c in self.casc_mirror_columns if c in saved_row]
-
-        if exists:
-            update_cols = [
-                c for c in mirror_cols
-                if c not in ("ItemNo", "PermitId", "RowNo", "CASCId")
-            ]
-            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
-            values = [saved_row.get(c) for c in update_cols] + [item_no, permit_id, row_no, casc_id]
-            cursor.execute(
-                f"UPDATE {self.in_casc_table} SET {set_clause} "
-                f"WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s",
-                values
-            )
-        else:
-            placeholders = ", ".join(["%s"] * len(mirror_cols))
-            values = [saved_row.get(c) for c in mirror_cols]
-            cursor.execute(
-                f"INSERT INTO {self.in_casc_table} ({', '.join(mirror_cols)}) VALUES ({placeholders})",
-                values
-            )
-
-    # ---------------- MAIN ----------------
-
-    def post(self, request):
-        payloads = request.data
-        if not payloads:
-            return Response({"error": "No data provided"}, status=400)
-        if not isinstance(payloads, list):
-            payloads = [payloads]
-
-        permit_id = None
-        item_action = "processed"
-        item_mirror_failed = None
-        casc_inserted = 0
-        casc_updated = 0
-        casc_mirror_failed = None
-
-        try:
-            with connections['default'].cursor() as cursor:
-                for item in payloads:
-                    if not isinstance(item, dict):
-                        item = dict(item)
-                    item.pop("Id", None)
-
-                    # Pull embedded casc rows out before filtering item columns
-                    casc_raw = item.pop("CascDatas", None)
-                    casc_rows = []
-                    if casc_raw:
-                        try:
-                            casc_rows = (
-                                json.loads(casc_raw) if isinstance(casc_raw, str) else casc_raw
-                            )
-                        except (ValueError, TypeError):
-                            casc_rows = []
-
-                    columns = [k for k in self.item_allowed_columns if k in item]
-                    if not columns:
-                        continue
-
-                    permit_id = item.get("PermitId")
-                    item_no = item.get("ItemNo")
-                    if not permit_id or not item_no:
-                        return Response(
-                            {"error": "PermitId and ItemNo are required"}, status=400
-                        )
-
-                    # ===== ITEM: upsert Common -> read back exactly what was saved -> mirror =====
-                    item_action = self._upsert_item(cursor, columns, item, permit_id, item_no)
-
-                    fetch_cols = ", ".join(self.item_allowed_columns)
-                    cursor.execute(
-                        f"SELECT {fetch_cols} FROM {self.common_item_table} "
-                        f"WHERE PermitId=%s AND ItemNo=%s",
-                        [permit_id, item_no]
-                    )
-                    row = cursor.fetchone()
-                    saved_item_row = dict(zip(self.item_allowed_columns, row)) if row else item
-
-                    try:
-                        self._mirror_item(cursor, saved_item_row, permit_id, item_no)
-                    except Exception as mirror_err:
-                        item_mirror_failed = str(mirror_err)
-
-                    # ===== CASC: same pattern, per row =====
-                    for casc_item in casc_rows:
-                        if not isinstance(casc_item, dict):
-                            continue
-                        c_item_no = casc_item.get("ItemNo")
-                        c_permit  = casc_item.get("PermitId")
-                        c_row_no  = casc_item.get("RowNo")
-                        if not c_item_no or not c_permit or c_row_no is None:
-                            continue
-
-                        action = self._upsert_casc(cursor, casc_item)
-                        if action == "inserted":
-                            casc_inserted += 1
-                        else:
-                            casc_updated += 1
-
-                        fetch_casc_cols = ", ".join(self.casc_allowed_columns)
-                        cursor.execute(
-                            f"""
-                            SELECT {fetch_casc_cols} FROM {self.common_casc_table}
-                            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
-                            """,
-                            [c_item_no, c_permit, c_row_no, casc_item.get("CASCId")]
-                        )
-                        crow = cursor.fetchone()
-                        saved_casc_row = (
-                            dict(zip(self.casc_allowed_columns, crow)) if crow else casc_item
-                        )
-
-                        try:
-                            self._mirror_casc(cursor, saved_casc_row)
-                        except Exception as mirror_err:
-                            casc_mirror_failed = str(mirror_err)
-
-                connections['default'].commit()
-
-        except Exception as e:
-            return Response({"error": f"Error saving record: {str(e)}"}, status=400)
-
-        # Return the current item list for this permit (what the frontend table renders)
-        try:
-            with connections['default'].cursor() as cursor:
-                fetch_columns = ", ".join(self.item_allowed_columns)
-                cursor.execute(
-                    f"SELECT {fetch_columns} FROM {self.common_item_table} "
-                    f"WHERE PermitId=%s ORDER BY ItemNo",
-                    [permit_id]
-                )
-                rows = cursor.fetchall()
-                records = [dict(zip(self.item_allowed_columns, row)) for row in rows]
-        except Exception:
-            records = []
-
-        response_data = {
-            "Result": (
-                f"Item {item_action} successfully, "
-                f"CASC {casc_inserted} inserted / {casc_updated} updated "
-                f"(mirrored to ItemDtl/CASCDtl)"
-            ),
-            "Records": records,
-        }
-        warnings = []
-        if item_mirror_failed:
-            warnings.append(f"Item mirror to ItemDtl failed: {item_mirror_failed}")
-        if casc_mirror_failed:
-            warnings.append(f"CASC mirror to CASCDtl failed: {casc_mirror_failed}")
-        if warnings:
-            response_data["Warning"] = " | ".join(warnings)
-
-        return Response(response_data, status=201)

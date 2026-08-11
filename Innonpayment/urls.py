@@ -222,6 +222,8 @@ urlpatterns = [
 # item copy delte,add upload
 path('syncInnonItemFromCommon/',views.SyncInnonItemFromCommon.as_view()),
 
+# post innonwith cascitem
+path('postInnonItemWithCasc/',views.PostInnonItemWithCascTable.as_view()),
 
 ]
 

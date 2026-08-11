@@ -376,6 +376,9 @@ urlpatterns = [
     # POSTCancel
     path('postTransCancelTable/',transhipment.PostCancelTranshipment.as_view()),
 
+    # Post item with casc
+    path('postItemWithCasc/',views.PostItemWithCascTable.as_view()),
+
    
 
 

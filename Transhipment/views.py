@@ -411,32 +411,276 @@ class DeleteTransItem(APIView):
         })
 
 
-class PostTransItemTable(APIView):
-    table = "TranshipmentItemDtl"
+# class PostTransItemTable(APIView):
+#     table = "TranshipmentItemDtl"
 
+#     allowed_columns = [
+#         "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "DGIndicator", "Contry",
+#         "Brand", "Model", "InHAWBOBL", "OutHAWBOBL", "DutiableQty", "DutiableUOM",
+#         "TotalDutiableQty", "TotalDutiableUOM", "InvoiceQuantity", "HSQty", "HSUOM", "AlcoholPer",
+#         "ChkUnitPrice", "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
+#         "TotalLineAmount", "InvoiceCharges", "CIFFOB", "OPQty", "OPUOM", "IPQty", "IPUOM",
+#         "InPqty", "InPUOM", "ImPQty", "ImPUOM", "PreferentialCode", "GSTRate", "GSTUOM",
+#         "GSTAmount", "ExciseDutyRate", "ExciseDutyUOM", "ExciseDutyAmount", "CustomsDutyRate",
+#         "CustomsDutyUOM", "CustomsDutyAmount", "OtherTaxRate", "OtherTaxUOM", "OtherTaxAmount",
+#         "CurrentLot", "PreviousLot", "Making", "ShippingMarks1", "ShippingMarks2",
+#         "ShippingMarks3", "ShippingMarks4", "TouchUser", "TouchTime", "VehicleType",
+#         "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge", "OptionalSumtotal",
+#         "OptionalSumExchage", "EngineCapUOM", "orignaldatereg",
+
+#     ]
+
+#     # Maps mismatched payload keys -> real TranshipmentItemDtl column names
+#     COLUMN_ALIASES = {
+#         "EngineCapcity": "Enginecapacity",
+#         "EngineCapUOM": "Engineuom",
+#         "orignaldatereg": "Orginregdate",
+#         "VehicleType": "DrpVehicleType",   # fixed: was missing, caused SQL errors for HSCode 87xx items
+#     }
+
+#     def post(self, request):
+#         payloads = request.data
+#         if not payloads:
+#             return Response({"error": "No data provided"}, status=400)
+#         if not isinstance(payloads, list):
+#             payloads = [payloads]
+
+#         permit_id = None
+#         action = ""
+
+#         try:
+#             with connections['default'].cursor() as cursor:
+#                 for item in payloads:
+#                     if not isinstance(item, dict):
+#                         item = dict(item)
+#                     item.pop("Id", None)
+
+#                     # Normalize mismatched keys to real column names
+#                     for src, dest in self.COLUMN_ALIASES.items():
+#                         if src in item:
+#                             item[dest] = item.pop(src)
+
+#                     columns = [k for k in item.keys() if k in self.allowed_columns]
+#                     if not columns:
+#                         continue
+
+#                     permit_id = item.get("PermitId")
+#                     item_no = item.get("ItemNo")
+#                     if not permit_id or not item_no:
+#                         return Response(
+#                             {"error": "PermitId and ItemNo are required"},
+#                             status=400
+#                         )
+
+#                     cursor.execute(
+#                         f"""
+#                         SELECT COUNT(*)
+#                         FROM {self.table}
+#                         WHERE PermitId=%s AND ItemNo=%s
+#                         """,
+#                         [permit_id, item_no]
+#                     )
+#                     exists = cursor.fetchone()[0] > 0
+
+#                     if exists:
+#                         update_columns = [
+#                             col for col in columns
+#                             if col not in ["PermitId", "ItemNo"]
+#                         ]
+#                         if update_columns:
+#                             set_clause = ", ".join(
+#                                 [f"{col}=%s" for col in update_columns]
+#                             )
+#                             values = [item[col] for col in update_columns]
+#                             values += [permit_id, item_no]
+#                             query = f"""
+#                             UPDATE {self.table}
+#                             SET {set_clause}
+#                             WHERE PermitId=%s AND ItemNo=%s
+#                             """
+#                             cursor.execute(query, values)
+#                         action = "updated"
+#                     else:
+#                         placeholders = ", ".join(["%s"] * len(columns))
+#                         values = [item[col] for col in columns]
+#                         query = f"""
+#                         INSERT INTO {self.table}
+#                         ({", ".join(columns)})
+#                         VALUES ({placeholders})
+#                         """
+#                         cursor.execute(query, values)
+#                         action = "inserted"
+
+#                 connections['default'].commit()
+
+#         except Exception as e:
+#             return Response(
+#                 {"error": f"Error saving record: {str(e)}"},
+#                 status=400
+#             )
+
+#         try:
+#             with connections['default'].cursor() as cursor:
+#                 fetch_columns = ", ".join(self.allowed_columns)
+
+#                 cursor.execute(
+#                     f"""
+#                     SELECT {fetch_columns}
+#                     FROM {self.table}
+#                     WHERE PermitId=%s
+#                     ORDER BY ItemNo
+#                     """,
+#                     [permit_id]
+#                 )
+
+#                 rows = cursor.fetchall()
+
+#                 records = [
+#                     dict(zip(self.allowed_columns, row))
+#                     for row in rows
+#                 ]
+
+#         except Exception:
+#             records = []
+
+#         return Response(
+#             {
+#                 "Result": f"Item {action} successfully",
+#                 "Records": records
+#             },
+#             status=201
+#         )
+
+class PostTransItemTable(APIView):
+    """
+    Saves item to CommonItemDtl first (source of truth), then reads back
+    exactly what was persisted and mirrors THAT into TranshipmentItemDtl —
+    not the raw payload. Same pattern as PostOutItemTable.
+
+    TranshipmentItemDtl differs from CommonItemDtl in two ways:
+    1. Renamed columns: VehicleType->DrpVehicleType, EngineCapcity->Enginecapacity,
+       EngineCapUOM->Engineuom, orignaldatereg->Orginregdate.
+    2. Missing columns entirely: InvoiceNo, LSPValue, EndUserDescription, and all
+       Certificate-of-Origin fields (CerItemQty, CerItemUOM, CIFValOfCer,
+       ManufactureCostDate, TexCat, TexQuotaQty, TexQuotaUOM, CerInvNo, CerInvDate,
+       OriginOfCer, HSCodeCer, PerContent, CertificateDescription) — these are
+       saved to Common but simply not mirrored.
+    """
+    common_table = "CommonItemDtl"
+    out_table = "TranshipmentItemDtl"
+
+
+    # Full column set for CommonItemDtl (everything except Id)
     allowed_columns = [
         "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "DGIndicator", "Contry",
-        "Brand", "Model", "InHAWBOBL", "OutHAWBOBL", "DutiableQty", "DutiableUOM",
-        "TotalDutiableQty", "TotalDutiableUOM", "InvoiceQuantity", "HSQty", "HSUOM", "AlcoholPer",
+        "EndUserDescription", "Brand", "Model", "InHAWBOBL", "OutHAWBOBL", "DutiableQty", "DutiableUOM",
+        "TotalDutiableQty", "TotalDutiableUOM", "InvoiceQuantity", "HSQty", "HSUOM", "AlcoholPer", "InvoiceNo",
         "ChkUnitPrice", "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
         "TotalLineAmount", "InvoiceCharges", "CIFFOB", "OPQty", "OPUOM", "IPQty", "IPUOM",
-        "InPqty", "InPUOM", "ImPQty", "ImPUOM", "PreferentialCode", "GSTRate", "GSTUOM",
-        "GSTAmount", "ExciseDutyRate", "ExciseDutyUOM", "ExciseDutyAmount", "CustomsDutyRate",
-        "CustomsDutyUOM", "CustomsDutyAmount", "OtherTaxRate", "OtherTaxUOM", "OtherTaxAmount",
-        "CurrentLot", "PreviousLot", "Making", "ShippingMarks1", "ShippingMarks2",
-        "ShippingMarks3", "ShippingMarks4", "TouchUser", "TouchTime", "VehicleType",
-        "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge", "OptionalSumtotal",
-        "OptionalSumExchage", "EngineCapUOM", "orignaldatereg",
-
+        "InPqty", "InPUOM", "ImPQty", "ImPUOM", "PreferentialCode", "GSTRate", "GSTUOM", "GSTAmount",
+        "ExciseDutyRate", "ExciseDutyUOM", "ExciseDutyAmount", "CustomsDutyRate", "CustomsDutyUOM", "CustomsDutyAmount",
+        "OtherTaxRate", "OtherTaxUOM", "OtherTaxAmount", "CurrentLot", "PreviousLot", "LSPValue", "Making",
+        "ShippingMarks1", "ShippingMarks2", "ShippingMarks3", "ShippingMarks4",
+        "CerItemQty", "CerItemUOM", "CIFValOfCer", "ManufactureCostDate", "TexCat", "TexQuotaQty", "TexQuotaUOM",
+        "CerInvNo", "CerInvDate", "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
+        "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge",
+        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
     ]
 
-    # Maps mismatched payload keys -> real TranshipmentItemDtl column names
-    COLUMN_ALIASES = {
+    # CommonItemDtl column name -> TranshipmentItemDtl column name.
+    # LSPValue, InvoiceNo, EndUserDescription, and all Certificate-of-Origin
+    # fields are intentionally omitted — no such columns on TranshipmentItemDtl.
+    MIRROR_COLUMN_MAP = {
+        "ItemNo": "ItemNo", "PermitId": "PermitId", "MessageType": "MessageType",
+        "HSCode": "HSCode", "Description": "Description", "DGIndicator": "DGIndicator",
+        "Contry": "Contry", "Brand": "Brand", "Model": "Model",
+        "InHAWBOBL": "InHAWBOBL", "OutHAWBOBL": "OutHAWBOBL",
+        "DutiableQty": "DutiableQty", "DutiableUOM": "DutiableUOM",
+        "TotalDutiableQty": "TotalDutiableQty", "TotalDutiableUOM": "TotalDutiableUOM",
+        "InvoiceQuantity": "InvoiceQuantity", "HSQty": "HSQty", "HSUOM": "HSUOM",
+        "AlcoholPer": "AlcoholPer",
+        "ChkUnitPrice": "ChkUnitPrice", "UnitPrice": "UnitPrice",
+        "UnitPriceCurrency": "UnitPriceCurrency", "ExchangeRate": "ExchangeRate",
+        "SumExchangeRate": "SumExchangeRate", "TotalLineAmount": "TotalLineAmount",
+        "InvoiceCharges": "InvoiceCharges", "CIFFOB": "CIFFOB",
+        "OPQty": "OPQty", "OPUOM": "OPUOM", "IPQty": "IPQty", "IPUOM": "IPUOM",
+        "InPqty": "InPqty", "InPUOM": "InPUOM", "ImPQty": "ImPQty", "ImPUOM": "ImPUOM",
+        "PreferentialCode": "PreferentialCode", "GSTRate": "GSTRate", "GSTUOM": "GSTUOM",
+        "GSTAmount": "GSTAmount", "ExciseDutyRate": "ExciseDutyRate", "ExciseDutyUOM": "ExciseDutyUOM",
+        "ExciseDutyAmount": "ExciseDutyAmount", "CustomsDutyRate": "CustomsDutyRate",
+        "CustomsDutyUOM": "CustomsDutyUOM", "CustomsDutyAmount": "CustomsDutyAmount",
+        "OtherTaxRate": "OtherTaxRate", "OtherTaxUOM": "OtherTaxUOM", "OtherTaxAmount": "OtherTaxAmount",
+        "CurrentLot": "CurrentLot", "PreviousLot": "PreviousLot",
+        "Making": "Making", "ShippingMarks1": "ShippingMarks1", "ShippingMarks2": "ShippingMarks2",
+        "ShippingMarks3": "ShippingMarks3", "ShippingMarks4": "ShippingMarks4",
+        "TouchUser": "TouchUser", "TouchTime": "TouchTime",
+        "OptionalChrgeUOM": "OptionalChrgeUOM", "Optioncahrge": "Optioncahrge",
+        "OptionalSumtotal": "OptionalSumtotal", "OptionalSumExchage": "OptionalSumExchage",
+        # ── renamed columns ──
+        "VehicleType": "DrpVehicleType",
         "EngineCapcity": "Enginecapacity",
         "EngineCapUOM": "Engineuom",
         "orignaldatereg": "Orginregdate",
-        "VehicleType": "DrpVehicleType",   # fixed: was missing, caused SQL errors for HSCode 87xx items
     }
+
+    def _upsert_common(self, cursor, columns, item, permit_id, item_no):
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {self.common_table} WHERE PermitId=%s AND ItemNo=%s",
+            [permit_id, item_no]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            update_cols = [c for c in columns if c not in ("PermitId", "ItemNo")]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [item.get(c) for c in update_cols] + [permit_id, item_no]
+            cursor.execute(
+                f"UPDATE {self.common_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
+                values
+            )
+            return "updated"
+        else:
+            placeholders = ", ".join(["%s"] * len(columns))
+            values = [item.get(c) for c in columns]
+            cursor.execute(
+                f"INSERT INTO {self.common_table} ({', '.join(columns)}) VALUES ({placeholders})",
+                values
+            )
+            return "inserted"
+
+    def _mirror_to_out(self, cursor, saved_row, permit_id, item_no):
+        """
+        Upsert TranshipmentItemDtl using the row actually persisted in
+        CommonItemDtl (fetched fresh) — not the original request payload.
+        Renames columns per MIRROR_COLUMN_MAP.
+        """
+        mirror_item = {
+            dest_col: saved_row.get(src_col)
+            for src_col, dest_col in self.MIRROR_COLUMN_MAP.items()
+        }
+        mirror_cols = list(mirror_item.keys())
+
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {self.out_table} WHERE PermitId=%s AND ItemNo=%s",
+            [permit_id, item_no]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            update_cols = [c for c in mirror_cols if c not in ("PermitId", "ItemNo")]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [mirror_item.get(c) for c in update_cols] + [permit_id, item_no]
+            cursor.execute(
+                f"UPDATE {self.out_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
+                values
+            )
+        else:
+            placeholders = ", ".join(["%s"] * len(mirror_cols))
+            values = [mirror_item.get(c) for c in mirror_cols]
+            cursor.execute(
+                f"INSERT INTO {self.out_table} ({', '.join(mirror_cols)}) VALUES ({placeholders})",
+                values
+            )
 
     def post(self, request):
         payloads = request.data
@@ -446,7 +690,8 @@ class PostTransItemTable(APIView):
             payloads = [payloads]
 
         permit_id = None
-        action = ""
+        common_action = "processed"
+        out_failed = None
 
         try:
             with connections['default'].cursor() as cursor:
@@ -455,12 +700,7 @@ class PostTransItemTable(APIView):
                         item = dict(item)
                     item.pop("Id", None)
 
-                    # Normalize mismatched keys to real column names
-                    for src, dest in self.COLUMN_ALIASES.items():
-                        if src in item:
-                            item[dest] = item.pop(src)
-
-                    columns = [k for k in item.keys() if k in self.allowed_columns]
+                    columns = [k for k in self.allowed_columns if k in item]
                     if not columns:
                         continue
 
@@ -468,88 +708,58 @@ class PostTransItemTable(APIView):
                     item_no = item.get("ItemNo")
                     if not permit_id or not item_no:
                         return Response(
-                            {"error": "PermitId and ItemNo are required"},
-                            status=400
+                            {"error": "PermitId and ItemNo are required"}, status=400
                         )
 
+                    # Step 1: Save to CommonItemDtl (source of truth)
+                    common_action = self._upsert_common(
+                        cursor, columns, item, permit_id, item_no
+                    )
+
+                    # Step 2: Read back EXACTLY what was persisted
+                    fetch_cols = ", ".join(self.allowed_columns)
                     cursor.execute(
-                        f"""
-                        SELECT COUNT(*)
-                        FROM {self.table}
-                        WHERE PermitId=%s AND ItemNo=%s
-                        """,
+                        f"SELECT {fetch_cols} FROM {self.common_table} "
+                        f"WHERE PermitId=%s AND ItemNo=%s",
                         [permit_id, item_no]
                     )
-                    exists = cursor.fetchone()[0] > 0
+                    row = cursor.fetchone()
+                    saved_row = dict(zip(self.allowed_columns, row)) if row else item
 
-                    if exists:
-                        update_columns = [
-                            col for col in columns
-                            if col not in ["PermitId", "ItemNo"]
-                        ]
-                        if update_columns:
-                            set_clause = ", ".join(
-                                [f"{col}=%s" for col in update_columns]
-                            )
-                            values = [item[col] for col in update_columns]
-                            values += [permit_id, item_no]
-                            query = f"""
-                            UPDATE {self.table}
-                            SET {set_clause}
-                            WHERE PermitId=%s AND ItemNo=%s
-                            """
-                            cursor.execute(query, values)
-                        action = "updated"
-                    else:
-                        placeholders = ", ".join(["%s"] * len(columns))
-                        values = [item[col] for col in columns]
-                        query = f"""
-                        INSERT INTO {self.table}
-                        ({", ".join(columns)})
-                        VALUES ({placeholders})
-                        """
-                        cursor.execute(query, values)
-                        action = "inserted"
+                    # Step 3: Mirror that persisted row into TranshipmentItemDtl
+                    try:
+                        self._mirror_to_out(cursor, saved_row, permit_id, item_no)
+                    except Exception as mirror_err:
+                        out_failed = str(mirror_err)
 
                 connections['default'].commit()
 
         except Exception as e:
-            return Response(
-                {"error": f"Error saving record: {str(e)}"},
-                status=400
-            )
+            return Response({"error": f"Error saving record: {str(e)}"}, status=400)
 
         try:
             with connections['default'].cursor() as cursor:
                 fetch_columns = ", ".join(self.allowed_columns)
-
                 cursor.execute(
-                    f"""
-                    SELECT {fetch_columns}
-                    FROM {self.table}
-                    WHERE PermitId=%s
-                    ORDER BY ItemNo
-                    """,
+                    f"SELECT {fetch_columns} FROM {self.common_table} "
+                    f"WHERE PermitId=%s ORDER BY ItemNo",
                     [permit_id]
                 )
-
                 rows = cursor.fetchall()
-
-                records = [
-                    dict(zip(self.allowed_columns, row))
-                    for row in rows
-                ]
-
+                records = [dict(zip(self.allowed_columns, row)) for row in rows]
         except Exception:
             records = []
 
-        return Response(
-            {
-                "Result": f"Item {action} successfully",
-                "Records": records
-            },
-            status=201
-        )
+        response_data = {
+            "Result": f"Item {common_action} successfully (mirrored to TranshipmentItemDtl)",
+            "Records": records,
+        }
+        if out_failed:
+            response_data["Warning"] = (
+                f"Saved to CommonItemDtl but mirror to TranshipmentItemDtl failed: {out_failed}"
+            )
+
+        return Response(response_data, status=201)
 
 
 class EditTransItemByItemNo(APIView):
@@ -669,93 +879,264 @@ class DeleteTransCascByCascId(APIView):
             return Response({"error": str(e)}, status=400)
 
 
+# class PostTransCascTable(APIView):
+#     table = "TCASCDtl"
+#     def post(self, request):
+#         payloads = request.data
+#         if not isinstance(payloads, list):
+#             payloads = [payloads]
+#         inserted_count = 0
+#         updated_count = 0
+#         try:
+#             with connections['default'].cursor() as cursor:
+#                 for item in payloads:
+#                     item_no = item.get("ItemNo")
+#                     permit_id = item.get("PermitId")
+#                     row_no = item.get("RowNo")
+#                     casc_id = item.get("CASCId")
+#                     if not item_no or not permit_id or row_no is None:
+#                         continue
+#                     cursor.execute(f"""
+#                         SELECT COUNT(*)
+#                         FROM {self.table}
+#                         WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+#                     """, [item_no, permit_id, row_no, casc_id])
+#                     exists = cursor.fetchone()[0] > 0
+#                     if exists:
+#                         cursor.execute(f"""
+#                             UPDATE {self.table}
+#                             SET
+#                                 ProductCode=%s,
+#                                 Quantity=%s,
+#                                 ProductUOM=%s,
+#                                 CascCode1=%s,
+#                                 CascCode2=%s,
+#                                 CascCode3=%s,
+#                                 TouchUser=%s,
+#                                 TouchTime=%s,
+#                                 CASCId=%s
+#                             WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+#                         """, [
+#                             item.get("ProductCode"),
+#                             item.get("Quantity"),
+#                             item.get("ProductUOM"),
+#                             item.get("CascCode1"),
+#                             item.get("CascCode2"),
+#                             item.get("CascCode3"),
+#                             item.get("TouchUser"),
+#                             item.get("TouchTime"),
+#                             casc_id,
+#                             item_no,
+#                             permit_id,
+#                             row_no,
+#                             casc_id
+#                         ])
+#                         updated_count += 1
+#                     else:
+#                         cursor.execute(f"""
+#                             INSERT INTO {self.table}
+#                             (
+#                                 ItemNo, ProductCode, Quantity, ProductUOM,
+#                                 RowNo, CascCode1, CascCode2, CascCode3,
+#                                 PermitId, MessageType,
+#                                 TouchUser, TouchTime, CASCId
+#                             )
+#                             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+#                         """, [
+#                             item_no,
+#                             item.get("ProductCode"),
+#                             item.get("Quantity"),
+#                             item.get("ProductUOM"),
+#                             row_no,
+#                             item.get("CascCode1"),
+#                             item.get("CascCode2"),
+#                             item.get("CascCode3"),
+#                             permit_id,
+#                             item.get("MessageType"),
+#                             item.get("TouchUser"),
+#                             item.get("TouchTime"),
+#                             casc_id
+#                         ])
+#                         inserted_count += 1
+#                 connections['default'].commit()
+#         except Exception as e:
+#             return Response({"error": str(e)}, status=400)
+#         return Response({
+#             "inserted": inserted_count,
+#             "updated": updated_count
+#         }, status=200)
+
+
 class PostTransCascTable(APIView):
-    table = "TCASCDtl"
+    """
+    Saves casc rows to CommonCASCDtl first (source of truth), then reads
+    back exactly what was persisted and mirrors THAT into TCASCDtl.
+    Same pattern as PostOutCascTable — TCASCDtl lacks EndUserDes.
+    """
+    common_table = "CommonCASCDtl"
+    out_table = "TCASCDtl"
+
+    allowed_columns = [
+        "ItemNo", "ProductCode", "Quantity", "ProductUOM", "RowNo",
+        "CascCode1", "CascCode2", "CascCode3", "PermitId", "MessageType",
+        "TouchUser", "TouchTime", "CASCId", "EndUserDes"
+    ]
+
+    mirror_columns = [
+        "ItemNo", "ProductCode", "Quantity", "ProductUOM", "RowNo",
+        "CascCode1", "CascCode2", "CascCode3", "PermitId", "MessageType",
+        "TouchUser", "TouchTime", "CASCId"
+    ]
+
+    def _upsert_common(self, cursor, item):
+        item_no = item.get("ItemNo")
+        permit_id = item.get("PermitId")
+        row_no = item.get("RowNo")
+        casc_id = item.get("CASCId")
+
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {self.common_table}
+            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+            """,
+            [item_no, permit_id, row_no, casc_id]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            cursor.execute(
+                f"""
+                UPDATE {self.common_table}
+                SET
+                    ProductCode=%s,
+                    Quantity=%s,
+                    ProductUOM=%s,
+                    CascCode1=%s,
+                    CascCode2=%s,
+                    CascCode3=%s,
+                    TouchUser=%s,
+                    TouchTime=%s,
+                    EndUserDes=%s
+                WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+                """,
+                [
+                    item.get("ProductCode"),
+                    item.get("Quantity"),
+                    item.get("ProductUOM"),
+                    item.get("CascCode1"),
+                    item.get("CascCode2"),
+                    item.get("CascCode3"),
+                    item.get("TouchUser"),
+                    item.get("TouchTime"),
+                    item.get("EndUserDes"),
+                    item_no, permit_id, row_no, casc_id
+                ]
+            )
+            return "updated"
+        else:
+            columns = [c for c in self.allowed_columns if c in item]
+            placeholders = ", ".join(["%s"] * len(columns))
+            values = [item.get(c) for c in columns]
+            cursor.execute(
+                f"INSERT INTO {self.common_table} ({', '.join(columns)}) VALUES ({placeholders})",
+                values
+            )
+            return "inserted"
+
+    def _mirror_to_out(self, cursor, saved_row):
+        item_no = saved_row.get("ItemNo")
+        permit_id = saved_row.get("PermitId")
+        row_no = saved_row.get("RowNo")
+        casc_id = saved_row.get("CASCId")
+
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {self.out_table}
+            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+            """,
+            [item_no, permit_id, row_no, casc_id]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        mirror_cols = [c for c in self.mirror_columns if c in saved_row]
+
+        if exists:
+            update_cols = [
+                c for c in mirror_cols
+                if c not in ("ItemNo", "PermitId", "RowNo", "CASCId")
+            ]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [saved_row.get(c) for c in update_cols] + [item_no, permit_id, row_no, casc_id]
+            cursor.execute(
+                f"UPDATE {self.out_table} SET {set_clause} WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s",
+                values
+            )
+        else:
+            placeholders = ", ".join(["%s"] * len(mirror_cols))
+            values = [saved_row.get(c) for c in mirror_cols]
+            cursor.execute(
+                f"INSERT INTO {self.out_table} ({', '.join(mirror_cols)}) VALUES ({placeholders})",
+                values
+            )
+
     def post(self, request):
         payloads = request.data
         if not isinstance(payloads, list):
             payloads = [payloads]
+
         inserted_count = 0
         updated_count = 0
+        out_failed = None
+
         try:
             with connections['default'].cursor() as cursor:
                 for item in payloads:
+                    if not isinstance(item, dict):
+                        item = dict(item)
+
                     item_no = item.get("ItemNo")
                     permit_id = item.get("PermitId")
                     row_no = item.get("RowNo")
-                    casc_id = item.get("CASCId")
                     if not item_no or not permit_id or row_no is None:
                         continue
-                    cursor.execute(f"""
-                        SELECT COUNT(*)
-                        FROM {self.table}
-                        WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
-                    """, [item_no, permit_id, row_no, casc_id])
-                    exists = cursor.fetchone()[0] > 0
-                    if exists:
-                        cursor.execute(f"""
-                            UPDATE {self.table}
-                            SET
-                                ProductCode=%s,
-                                Quantity=%s,
-                                ProductUOM=%s,
-                                CascCode1=%s,
-                                CascCode2=%s,
-                                CascCode3=%s,
-                                TouchUser=%s,
-                                TouchTime=%s,
-                                CASCId=%s
-                            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
-                        """, [
-                            item.get("ProductCode"),
-                            item.get("Quantity"),
-                            item.get("ProductUOM"),
-                            item.get("CascCode1"),
-                            item.get("CascCode2"),
-                            item.get("CascCode3"),
-                            item.get("TouchUser"),
-                            item.get("TouchTime"),
-                            casc_id,
-                            item_no,
-                            permit_id,
-                            row_no,
-                            casc_id
-                        ])
-                        updated_count += 1
-                    else:
-                        cursor.execute(f"""
-                            INSERT INTO {self.table}
-                            (
-                                ItemNo, ProductCode, Quantity, ProductUOM,
-                                RowNo, CascCode1, CascCode2, CascCode3,
-                                PermitId, MessageType,
-                                TouchUser, TouchTime, CASCId
-                            )
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        """, [
-                            item_no,
-                            item.get("ProductCode"),
-                            item.get("Quantity"),
-                            item.get("ProductUOM"),
-                            row_no,
-                            item.get("CascCode1"),
-                            item.get("CascCode2"),
-                            item.get("CascCode3"),
-                            permit_id,
-                            item.get("MessageType"),
-                            item.get("TouchUser"),
-                            item.get("TouchTime"),
-                            casc_id
-                        ])
+
+                    action = self._upsert_common(cursor, item)
+                    if action == "inserted":
                         inserted_count += 1
+                    else:
+                        updated_count += 1
+
+                    fetch_cols = ", ".join(self.allowed_columns)
+                    cursor.execute(
+                        f"""
+                        SELECT {fetch_cols} FROM {self.common_table}
+                        WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+                        """,
+                        [item_no, permit_id, row_no, item.get("CASCId")]
+                    )
+                    row = cursor.fetchone()
+                    saved_row = dict(zip(self.allowed_columns, row)) if row else item
+
+                    try:
+                        self._mirror_to_out(cursor, saved_row)
+                    except Exception as mirror_err:
+                        out_failed = str(mirror_err)
+
                 connections['default'].commit()
+
         except Exception as e:
             return Response({"error": str(e)}, status=400)
-        return Response({
-            "inserted": inserted_count,
-            "updated": updated_count
-        }, status=200)
 
+        response_data = {
+            "inserted": inserted_count,
+            "updated": updated_count,
+        }
+        if out_failed:
+            response_data["Warning"] = (
+                f"Saved to CommonCASCDtl but mirror to TCASCDtl failed: {out_failed}"
+            )
+
+        return Response(response_data, status=200)
 
 class EditTransCascByPermitId(APIView):
     table = "TCASCDtl"
@@ -8387,3 +8768,380 @@ class SyncTransItemFromCommon(APIView):
             "item": items,
             "casc": casc,
         }, status=200)
+
+
+# Transitemwithcasc
+class PostTransItemWithCascTable(APIView):
+    """
+    Single-call replacement for PostTransItemTable + PostTransCascTable.
+    Payload = item fields as usual, plus "CascDatas": JSON string (or list)
+    of casc row dicts.
+
+    Flow, all inside one DB transaction:
+      1. Upsert item -> CommonItemDtl
+      2. Read back exactly what was persisted
+      3. Mirror that row -> TranshipmentItemDtl (renaming VehicleType/EngineCapcity/
+         EngineCapUOM/orignaldatereg, dropping InvoiceNo/LSPValue/EndUserDescription/
+         all Certificate-of-Origin fields — none of these columns exist on
+         TranshipmentItemDtl)
+      4. For each casc row: upsert -> CommonCASCDtl, read back, mirror ->
+         TCASCDtl (dropping EndUserDes — no such column there)
+    """
+    common_item_table = "CommonItemDtl"
+    trans_item_table = "TranshipmentItemDtl"
+    common_casc_table = "CommonCASCDtl"
+    trans_casc_table = "TCASCDtl"
+
+    # Full column set for CommonItemDtl (everything except Id)
+    item_allowed_columns = [
+        "ItemNo", "PermitId", "MessageType", "HSCode", "Description", "DGIndicator", "Contry",
+        "EndUserDescription", "Brand", "Model", "InHAWBOBL", "OutHAWBOBL", "DutiableQty", "DutiableUOM",
+        "TotalDutiableQty", "TotalDutiableUOM", "InvoiceQuantity", "HSQty", "HSUOM", "AlcoholPer", "InvoiceNo",
+        "ChkUnitPrice", "UnitPrice", "UnitPriceCurrency", "ExchangeRate", "SumExchangeRate",
+        "TotalLineAmount", "InvoiceCharges", "CIFFOB", "OPQty", "OPUOM", "IPQty", "IPUOM",
+        "InPqty", "InPUOM", "ImPQty", "ImPUOM", "PreferentialCode", "GSTRate", "GSTUOM", "GSTAmount",
+        "ExciseDutyRate", "ExciseDutyUOM", "ExciseDutyAmount", "CustomsDutyRate", "CustomsDutyUOM", "CustomsDutyAmount",
+        "OtherTaxRate", "OtherTaxUOM", "OtherTaxAmount", "CurrentLot", "PreviousLot", "LSPValue", "Making",
+        "ShippingMarks1", "ShippingMarks2", "ShippingMarks3", "ShippingMarks4",
+        "CerItemQty", "CerItemUOM", "CIFValOfCer", "ManufactureCostDate", "TexCat", "TexQuotaQty", "TexQuotaUOM",
+        "CerInvNo", "CerInvDate", "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
+        "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge",
+        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
+    ]
+
+    # CommonItemDtl column -> TranshipmentItemDtl column.
+    # InvoiceNo, LSPValue, EndUserDescription, and all Certificate-of-Origin
+    # fields are intentionally omitted — no such columns on TranshipmentItemDtl.
+    ITEM_MIRROR_COLUMN_MAP = {
+        "ItemNo": "ItemNo", "PermitId": "PermitId", "MessageType": "MessageType",
+        "HSCode": "HSCode", "Description": "Description", "DGIndicator": "DGIndicator",
+        "Contry": "Contry", "Brand": "Brand", "Model": "Model",
+        "InHAWBOBL": "InHAWBOBL", "OutHAWBOBL": "OutHAWBOBL",
+        "DutiableQty": "DutiableQty", "DutiableUOM": "DutiableUOM",
+        "TotalDutiableQty": "TotalDutiableQty", "TotalDutiableUOM": "TotalDutiableUOM",
+        "InvoiceQuantity": "InvoiceQuantity", "HSQty": "HSQty", "HSUOM": "HSUOM",
+        "AlcoholPer": "AlcoholPer",
+        "ChkUnitPrice": "ChkUnitPrice", "UnitPrice": "UnitPrice",
+        "UnitPriceCurrency": "UnitPriceCurrency", "ExchangeRate": "ExchangeRate",
+        "SumExchangeRate": "SumExchangeRate", "TotalLineAmount": "TotalLineAmount",
+        "InvoiceCharges": "InvoiceCharges", "CIFFOB": "CIFFOB",
+        "OPQty": "OPQty", "OPUOM": "OPUOM", "IPQty": "IPQty", "IPUOM": "IPUOM",
+        "InPqty": "InPqty", "InPUOM": "InPUOM", "ImPQty": "ImPQty", "ImPUOM": "ImPUOM",
+        "PreferentialCode": "PreferentialCode", "GSTRate": "GSTRate", "GSTUOM": "GSTUOM",
+        "GSTAmount": "GSTAmount", "ExciseDutyRate": "ExciseDutyRate", "ExciseDutyUOM": "ExciseDutyUOM",
+        "ExciseDutyAmount": "ExciseDutyAmount", "CustomsDutyRate": "CustomsDutyRate",
+        "CustomsDutyUOM": "CustomsDutyUOM", "CustomsDutyAmount": "CustomsDutyAmount",
+        "OtherTaxRate": "OtherTaxRate", "OtherTaxUOM": "OtherTaxUOM", "OtherTaxAmount": "OtherTaxAmount",
+        "CurrentLot": "CurrentLot", "PreviousLot": "PreviousLot",
+        "Making": "Making", "ShippingMarks1": "ShippingMarks1", "ShippingMarks2": "ShippingMarks2",
+        "ShippingMarks3": "ShippingMarks3", "ShippingMarks4": "ShippingMarks4",
+        "TouchUser": "TouchUser", "TouchTime": "TouchTime",
+        "OptionalChrgeUOM": "OptionalChrgeUOM", "Optioncahrge": "Optioncahrge",
+        "OptionalSumtotal": "OptionalSumtotal", "OptionalSumExchage": "OptionalSumExchage",
+        # ── renamed columns ──
+        "VehicleType": "DrpVehicleType",
+        "EngineCapcity": "Enginecapacity",
+        "EngineCapUOM": "Engineuom",
+        "orignaldatereg": "Orginregdate",
+    }
+
+    casc_allowed_columns = [
+        "ItemNo", "ProductCode", "Quantity", "ProductUOM", "RowNo",
+        "CascCode1", "CascCode2", "CascCode3", "PermitId", "MessageType",
+        "TouchUser", "TouchTime", "CASCId", "EndUserDes"
+    ]
+
+    # TCASCDtl has no EndUserDes column — drop it on mirror
+    casc_mirror_columns = [
+        "ItemNo", "ProductCode", "Quantity", "ProductUOM", "RowNo",
+        "CascCode1", "CascCode2", "CascCode3", "PermitId", "MessageType",
+        "TouchUser", "TouchTime", "CASCId"
+    ]
+
+    # ---------------- ITEM helpers ----------------
+
+    def _upsert_item(self, cursor, columns, item, permit_id, item_no):
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {self.common_item_table} WHERE PermitId=%s AND ItemNo=%s",
+            [permit_id, item_no]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            update_cols = [c for c in columns if c not in ("PermitId", "ItemNo")]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [item.get(c) for c in update_cols] + [permit_id, item_no]
+            cursor.execute(
+                f"UPDATE {self.common_item_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
+                values
+            )
+            return "updated"
+        else:
+            placeholders = ", ".join(["%s"] * len(columns))
+            values = [item.get(c) for c in columns]
+            cursor.execute(
+                f"INSERT INTO {self.common_item_table} ({', '.join(columns)}) VALUES ({placeholders})",
+                values
+            )
+            return "inserted"
+
+    def _mirror_item(self, cursor, saved_row, permit_id, item_no):
+        """
+        Upsert TranshipmentItemDtl using the row actually persisted in
+        CommonItemDtl, applying ITEM_MIRROR_COLUMN_MAP (renamed columns,
+        dropped columns TranshipmentItemDtl doesn't have).
+        """
+        mirror_item = {
+            dest_col: saved_row.get(src_col)
+            for src_col, dest_col in self.ITEM_MIRROR_COLUMN_MAP.items()
+        }
+        mirror_cols = list(mirror_item.keys())
+
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {self.trans_item_table} WHERE PermitId=%s AND ItemNo=%s",
+            [permit_id, item_no]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            update_cols = [c for c in mirror_cols if c not in ("PermitId", "ItemNo")]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [mirror_item.get(c) for c in update_cols] + [permit_id, item_no]
+            cursor.execute(
+                f"UPDATE {self.trans_item_table} SET {set_clause} WHERE PermitId=%s AND ItemNo=%s",
+                values
+            )
+        else:
+            placeholders = ", ".join(["%s"] * len(mirror_cols))
+            values = [mirror_item.get(c) for c in mirror_cols]
+            cursor.execute(
+                f"INSERT INTO {self.trans_item_table} ({', '.join(mirror_cols)}) VALUES ({placeholders})",
+                values
+            )
+
+    # ---------------- CASC helpers ----------------
+
+    def _upsert_casc(self, cursor, casc_item):
+        item_no = casc_item.get("ItemNo")
+        permit_id = casc_item.get("PermitId")
+        row_no = casc_item.get("RowNo")
+        casc_id = casc_item.get("CASCId")
+
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {self.common_casc_table}
+            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+            """,
+            [item_no, permit_id, row_no, casc_id]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        if exists:
+            cursor.execute(
+                f"""
+                UPDATE {self.common_casc_table}
+                SET
+                    ProductCode=%s,
+                    Quantity=%s,
+                    ProductUOM=%s,
+                    CascCode1=%s,
+                    CascCode2=%s,
+                    CascCode3=%s,
+                    TouchUser=%s,
+                    TouchTime=%s,
+                    EndUserDes=%s
+                WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+                """,
+                [
+                    casc_item.get("ProductCode"),
+                    casc_item.get("Quantity"),
+                    casc_item.get("ProductUOM"),
+                    casc_item.get("CascCode1"),
+                    casc_item.get("CascCode2"),
+                    casc_item.get("CascCode3"),
+                    casc_item.get("TouchUser"),
+                    casc_item.get("TouchTime"),
+                    casc_item.get("EndUserDes"),
+                    item_no, permit_id, row_no, casc_id
+                ]
+            )
+            return "updated"
+        else:
+            columns = [c for c in self.casc_allowed_columns if c in casc_item]
+            placeholders = ", ".join(["%s"] * len(columns))
+            values = [casc_item.get(c) for c in columns]
+            cursor.execute(
+                f"INSERT INTO {self.common_casc_table} ({', '.join(columns)}) VALUES ({placeholders})",
+                values
+            )
+            return "inserted"
+
+    def _mirror_casc(self, cursor, saved_row):
+        item_no = saved_row.get("ItemNo")
+        permit_id = saved_row.get("PermitId")
+        row_no = saved_row.get("RowNo")
+        casc_id = saved_row.get("CASCId")
+
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) FROM {self.trans_casc_table}
+            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+            """,
+            [item_no, permit_id, row_no, casc_id]
+        )
+        exists = cursor.fetchone()[0] > 0
+
+        mirror_cols = [c for c in self.casc_mirror_columns if c in saved_row]
+
+        if exists:
+            update_cols = [
+                c for c in mirror_cols
+                if c not in ("ItemNo", "PermitId", "RowNo", "CASCId")
+            ]
+            set_clause = ", ".join([f"{c}=%s" for c in update_cols])
+            values = [saved_row.get(c) for c in update_cols] + [item_no, permit_id, row_no, casc_id]
+            cursor.execute(
+                f"UPDATE {self.trans_casc_table} SET {set_clause} "
+                f"WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s",
+                values
+            )
+        else:
+            placeholders = ", ".join(["%s"] * len(mirror_cols))
+            values = [saved_row.get(c) for c in mirror_cols]
+            cursor.execute(
+                f"INSERT INTO {self.trans_casc_table} ({', '.join(mirror_cols)}) VALUES ({placeholders})",
+                values
+            )
+
+    # ---------------- MAIN ----------------
+
+    def post(self, request):
+        payloads = request.data
+        if not payloads:
+            return Response({"error": "No data provided"}, status=400)
+        if not isinstance(payloads, list):
+            payloads = [payloads]
+
+        permit_id = None
+        item_action = "processed"
+        item_mirror_failed = None
+        casc_inserted = 0
+        casc_updated = 0
+        casc_mirror_failed = None
+
+        try:
+            with connections['default'].cursor() as cursor:
+                for item in payloads:
+                    if not isinstance(item, dict):
+                        item = dict(item)
+                    item.pop("Id", None)
+
+                    # Pull embedded casc rows out before filtering item columns
+                    casc_raw = item.pop("CascDatas", None)
+                    casc_rows = []
+                    if casc_raw:
+                        try:
+                            casc_rows = (
+                                json.loads(casc_raw) if isinstance(casc_raw, str) else casc_raw
+                            )
+                        except (ValueError, TypeError):
+                            casc_rows = []
+
+                    columns = [k for k in self.item_allowed_columns if k in item]
+                    if not columns:
+                        continue
+
+                    permit_id = item.get("PermitId")
+                    item_no = item.get("ItemNo")
+                    if not permit_id or not item_no:
+                        return Response(
+                            {"error": "PermitId and ItemNo are required"}, status=400
+                        )
+
+                    # ===== ITEM: upsert Common -> read back -> mirror to TranshipmentItemDtl =====
+                    item_action = self._upsert_item(cursor, columns, item, permit_id, item_no)
+
+                    fetch_cols = ", ".join(self.item_allowed_columns)
+                    cursor.execute(
+                        f"SELECT {fetch_cols} FROM {self.common_item_table} "
+                        f"WHERE PermitId=%s AND ItemNo=%s",
+                        [permit_id, item_no]
+                    )
+                    row = cursor.fetchone()
+                    saved_item_row = dict(zip(self.item_allowed_columns, row)) if row else item
+
+                    try:
+                        self._mirror_item(cursor, saved_item_row, permit_id, item_no)
+                    except Exception as mirror_err:
+                        item_mirror_failed = str(mirror_err)
+
+                    # ===== CASC: same pattern, per row, mirror to TCASCDtl =====
+                    for casc_item in casc_rows:
+                        if not isinstance(casc_item, dict):
+                            continue
+                        c_item_no = casc_item.get("ItemNo")
+                        c_permit  = casc_item.get("PermitId")
+                        c_row_no  = casc_item.get("RowNo")
+                        if not c_item_no or not c_permit or c_row_no is None:
+                            continue
+
+                        action = self._upsert_casc(cursor, casc_item)
+                        if action == "inserted":
+                            casc_inserted += 1
+                        else:
+                            casc_updated += 1
+
+                        fetch_casc_cols = ", ".join(self.casc_allowed_columns)
+                        cursor.execute(
+                            f"""
+                            SELECT {fetch_casc_cols} FROM {self.common_casc_table}
+                            WHERE ItemNo=%s AND PermitId=%s AND RowNo=%s AND CASCId=%s
+                            """,
+                            [c_item_no, c_permit, c_row_no, casc_item.get("CASCId")]
+                        )
+                        crow = cursor.fetchone()
+                        saved_casc_row = (
+                            dict(zip(self.casc_allowed_columns, crow)) if crow else casc_item
+                        )
+
+                        try:
+                            self._mirror_casc(cursor, saved_casc_row)
+                        except Exception as mirror_err:
+                            casc_mirror_failed = str(mirror_err)
+
+                connections['default'].commit()
+
+        except Exception as e:
+            return Response({"error": f"Error saving record: {str(e)}"}, status=400)
+
+        # Return the current item list for this permit (what the frontend table renders)
+        try:
+            with connections['default'].cursor() as cursor:
+                fetch_columns = ", ".join(self.item_allowed_columns)
+                cursor.execute(
+                    f"SELECT {fetch_columns} FROM {self.common_item_table} "
+                    f"WHERE PermitId=%s ORDER BY ItemNo",
+                    [permit_id]
+                )
+                rows = cursor.fetchall()
+                records = [dict(zip(self.item_allowed_columns, row)) for row in rows]
+        except Exception:
+            records = []
+
+        response_data = {
+            "Result": (
+                f"Item {item_action} successfully, "
+                f"CASC {casc_inserted} inserted / {casc_updated} updated "
+                f"(mirrored to TranshipmentItemDtl/TCASCDtl)"
+            ),
+            "Records": records,
+        }
+        warnings = []
+        if item_mirror_failed:
+            warnings.append(f"Item mirror to TranshipmentItemDtl failed: {item_mirror_failed}")
+        if casc_mirror_failed:
+            warnings.append(f"CASC mirror to TCASCDtl failed: {casc_mirror_failed}")
+        if warnings:
+            response_data["Warning"] = " | ".join(warnings)
+
+        return Response(response_data, status=201)
