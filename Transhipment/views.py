@@ -4451,6 +4451,23 @@ class DeleteTransHawbl(APIView):
                 status=400
             )
 
+class DeleteInHawbl(APIView):
+    def delete(self, request, permit_id):
+        try:
+            SqlDb.execute_query(
+                "UPDATE TranshipmentItemDtl SET InHAWBOBL='', OutHAWBOBL='' WHERE PermitId=%s",
+                (permit_id,)
+            )
+            return Response(
+                {"message": f"HAWBOBL cleared for all items in PermitId {permit_id}"},
+                status=200
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to clear HAWBOBL: {str(e)}"},
+                status=400
+            )
+
 class CopyInpayment(APIView):
     def post(self, request):
         copied_permits = []

@@ -381,7 +381,7 @@ class PostCommonHeaderTable(APIView):
         "TouchUser", "TouchTime", "PermitNumber", "prmtStatus", "ResLoaName",
         "RepLocName", "RecepitLocName", "outHAWB", "INHAWB", "seastore",
         "CertificateNumber", "Defrentprinting", "Cnb", "DeclarningFor",
-        "MRDate", "MRTime", "CondColor", "TransmitId", "gstVerified","Message","HandlingAgentCode","CustomerRemarks"
+        "MRDate", "MRTime", "CondColor", "TransmitId", "gstVerified","Message","HandlingAgentCode","CustomerRemarks","ExhibitionSDate","ExhibitionEDate"
     }
     def post(self, request):
         payloads = request.data
@@ -4853,7 +4853,10 @@ def excel_to_date_str(val):
     if isinstance(val, datetime):
         return val.strftime("%Y-%m-%d")
     val_str = str(val).strip()
-    for fmt in ("%d/%m/%Y", "%Y/%m/%d", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S", 
+        "%d/%m/%Y", "%Y/%m/%d", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"
+    ):
         try:
             return datetime.strptime(val_str, fmt).strftime("%Y-%m-%d")
         except ValueError:
@@ -5330,6 +5333,7 @@ class UpdateItemBrandByPermitId(APIView):
             )
         except Exception as e:
             return Response({"error": f"Failed to update brand: {str(e)}"}, status=400)
+            
 class DeleteHawbl(APIView):
     def delete(self, request, permit_id):
         try:

@@ -227,6 +227,8 @@ path('syncOutItemFromCommon/',views.SyncOutItemFromCommon.as_view()),
 # postitemwithcasc
 
 path('postOutItemWithCasc/', views.PostOutItemWithCascTable.as_view()),
+
+   path('deleteInHawbByPermitId/<str:permit_id>/', views.DeleteInHawbl.as_view()),
 ]
 
 

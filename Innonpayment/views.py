@@ -211,7 +211,7 @@ class PostInnonHeaderTable(APIView):
                     else:
                         sanitized_item[col] = val
 
-                print("sanitized_item:", sanitized_item)
+                # print("sanitized_item:", sanitized_item)
 
                 existing_header_check = SqlDb.execute_query(
                     f"SELECT 1 FROM {self.table} WHERE PermitId = %s", [PermitId]
@@ -4434,7 +4434,7 @@ class DeleteInHawbl(APIView):
     def delete(self, request, permit_id):
         try:
             SqlDb.execute_query(
-                "UPDATE InNonItemDtl SET InHAWBOBL=''WHERE PermitId=%s",
+                "UPDATE InNonItemDtl SET InHAWBOBL='', OutHAWBOBL='' WHERE PermitId=%s",
                 (permit_id,)
             )
             return Response(

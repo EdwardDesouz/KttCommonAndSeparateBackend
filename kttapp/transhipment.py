@@ -60,7 +60,7 @@ class TransList(APIView):
                     CONVERT(varchar, t1.DepartureDate, 105) AS ETA,
                     t1.PermitNumber AS PERMITNO,
                     i.Name + ' ' + i.Name1 AS IMPORTER,
-                    t1.HBL AS HAWB,
+                    t1.INHAWB AS HAWB,
                     CASE  
                         WHEN t1.InwardTransportMode = '4 : Air' THEN t1.MasterAirwayBill  
                         WHEN t1.InwardTransportMode = '1 : Sea' THEN t1.OceanBillofLadingNo  

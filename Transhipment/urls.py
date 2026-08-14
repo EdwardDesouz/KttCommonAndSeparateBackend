@@ -231,6 +231,8 @@ path('syncTransItemFromCommon/', views.SyncTransItemFromCommon.as_view()),
 
 path('postTransItemWithCasc/', views.PostTransItemWithCascTable.as_view()),
 
+path('deleteInHawbByPermitId/<str:permit_id>/', views.DeleteInHawbl.as_view()),
+
 ]
 
 

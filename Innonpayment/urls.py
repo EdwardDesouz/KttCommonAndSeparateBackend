@@ -225,6 +225,7 @@ path('syncInnonItemFromCommon/',views.SyncInnonItemFromCommon.as_view()),
 # post innonwith cascitem
 path('postInnonItemWithCasc/',views.PostInnonItemWithCascTable.as_view()),
 
+    path('deleteInHawbByPermitId/<str:permit_id>/', views.DeleteInHawbl.as_view()),
 ]
 
 
