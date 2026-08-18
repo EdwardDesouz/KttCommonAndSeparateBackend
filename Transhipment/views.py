@@ -584,7 +584,7 @@ class PostTransItemTable(APIView):
         "CerItemQty", "CerItemUOM", "CIFValOfCer", "ManufactureCostDate", "TexCat", "TexQuotaQty", "TexQuotaUOM",
         "CerInvNo", "CerInvDate", "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
         "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge",
-        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
+        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg" ,"InMAWBOBL", "OutMAWBOBL",   
     ]
 
     # CommonItemDtl column name -> TranshipmentItemDtl column name.
@@ -621,6 +621,8 @@ class PostTransItemTable(APIView):
         "EngineCapcity": "Enginecapacity",
         "EngineCapUOM": "Engineuom",
         "orignaldatereg": "Orginregdate",
+        "InMAWBOBL": "InMAWBOBL", 
+        "OutMAWBOBL": "OutMAWBOBL",
     }
 
     def _upsert_common(self, cursor, columns, item, permit_id, item_no):
@@ -4635,7 +4637,7 @@ class CopyInpayment(APIView):
                             "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
                             "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM",
                             "EngineCapcity", "Optioncahrge", "OptionalSumtotal",
-                            "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
+                            "OptionalSumExchage", "EngineCapUOM", "orignaldatereg","InMAWBOBL", "OutMAWBOBL",
                         ],
                         "TCASCDtl": [
                                 "ItemNo", "ProductCode", "Quantity", "ProductUOM",
@@ -8350,7 +8352,7 @@ class TransmitInnonpayment(APIView):
                             "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
                             "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM",
                             "EngineCapcity", "Optioncahrge", "OptionalSumtotal",
-                            "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
+                            "OptionalSumExchage", "EngineCapUOM", "orignaldatereg","InMAWBOBL", "OutMAWBOBL",
                         ],
                         "TCASCDtl": [
                             "ItemNo", "ProductCode", "Quantity", "ProductUOM",
@@ -8703,7 +8705,7 @@ class SyncTransItemFromCommon(APIView):
         "CurrentLot", "PreviousLot", "Making", "ShippingMarks1", "ShippingMarks2",
         "ShippingMarks3", "ShippingMarks4", "TouchUser", "TouchTime", "VehicleType",
         "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge", "OptionalSumtotal",
-        "OptionalSumExchage", "EngineCapUOM", "orignaldatereg",
+        "OptionalSumExchage", "EngineCapUOM", "orignaldatereg","InMAWBOBL", "OutMAWBOBL",
     ]
 
     # Same positions — but the real column names on TranshipmentItemDtl (target)
@@ -8719,7 +8721,7 @@ class SyncTransItemFromCommon(APIView):
         "CurrentLot", "PreviousLot", "Making", "ShippingMarks1", "ShippingMarks2",
         "ShippingMarks3", "ShippingMarks4", "TouchUser", "TouchTime", "DrpVehicleType",
         "OptionalChrgeUOM", "Enginecapacity", "Optioncahrge", "OptionalSumtotal",
-        "OptionalSumExchage", "Engineuom", "Orginregdate",
+        "OptionalSumExchage", "Engineuom", "Orginregdate","InMAWBOBL", "OutMAWBOBL",
     ]
 
     CASC_COLUMNS = [
@@ -8823,7 +8825,7 @@ class PostTransItemWithCascTable(APIView):
         "CerItemQty", "CerItemUOM", "CIFValOfCer", "ManufactureCostDate", "TexCat", "TexQuotaQty", "TexQuotaUOM",
         "CerInvNo", "CerInvDate", "OriginOfCer", "HSCodeCer", "PerContent", "CertificateDescription",
         "TouchUser", "TouchTime", "VehicleType", "OptionalChrgeUOM", "EngineCapcity", "Optioncahrge",
-        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg"
+        "OptionalSumtotal", "OptionalSumExchage", "EngineCapUOM", "orignaldatereg","InMAWBOBL","OutMAWBOBL" 
     ]
 
     # CommonItemDtl column -> TranshipmentItemDtl column.
@@ -8860,6 +8862,7 @@ class PostTransItemWithCascTable(APIView):
         "EngineCapcity": "Enginecapacity",
         "EngineCapUOM": "Engineuom",
         "orignaldatereg": "Orginregdate",
+        "InMAWBOBL": "InMAWBOBL", "OutMAWBOBL": "OutMAWBOBL", 
     }
 
     casc_allowed_columns = [

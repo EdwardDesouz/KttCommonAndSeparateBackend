@@ -117,6 +117,22 @@ DATABASES = {
     }
 }
 
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'mssql',
+#         'NAME': 'Ktt_Trail',
+#         'USER': 'sa',
+#         'PASSWORD': 'KttNew@2026',
+#         'HOST': '129.121.97.12,1433',  
+#         'PORT': '1433',
+#         'OPTIONS': {
+#             'driver': 'ODBC Driver 17 for SQL Server',
+#            },
+#     }
+# }
+
+
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 

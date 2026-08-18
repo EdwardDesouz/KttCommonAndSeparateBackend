@@ -1011,7 +1011,7 @@ class CopyTranshipment(APIView):
                                 OriginOfCer, HSCodeCer, PerContent, CertificateDescription,
                                 TouchUser, TouchTime, VehicleType, OptionalChrgeUOM,
                                 EngineCapcity, Optioncahrge, OptionalSumtotal,
-                                OptionalSumExchage, EngineCapUOM, orignaldatereg
+                                OptionalSumExchage, EngineCapUOM, orignaldatereg, InMAWBOBL, OutMAWBOBL
                             )
                             SELECT
                                 %s, ItemNo, MessageType, HSCode, Description, DGIndicator,
@@ -1032,7 +1032,7 @@ class CopyTranshipment(APIView):
                                 OriginOfCer, HSCodeCer, PerContent, CertificateDescription,
                                 TouchUser, TouchTime, VehicleType, OptionalChrgeUOM,
                                 EngineCapcity, Optioncahrge, OptionalSumtotal,
-                                OptionalSumExchage, EngineCapUOM, orignaldatereg
+                                OptionalSumExchage, EngineCapUOM, orignaldatereg, InMAWBOBL, OutMAWBOBL
                             FROM CommonItemDtl WHERE PermitId = %s
                         """, [new_permit_id, permit_id])
                     except Exception as err:
@@ -1056,7 +1056,7 @@ class CopyTranshipment(APIView):
                                 ShippingMarks1, ShippingMarks2, ShippingMarks3, ShippingMarks4,
                                 TouchUser, TouchTime, DrpVehicleType, OptionalChrgeUOM,
                                 Enginecapacity, Optioncahrge, OptionalSumtotal,
-                                OptionalSumExchage, Engineuom, Orginregdate
+                                OptionalSumExchage, Engineuom, Orginregdate, InMAWBOBL, OutMAWBOBL
                             )
                             SELECT
                                 %s, ItemNo, MessageType, HSCode, Description, DGIndicator,
@@ -1074,7 +1074,7 @@ class CopyTranshipment(APIView):
                                 ShippingMarks1, ShippingMarks2, ShippingMarks3, ShippingMarks4,
                                 TouchUser, TouchTime, VehicleType, OptionalChrgeUOM,
                                 EngineCapcity, Optioncahrge, OptionalSumtotal,
-                                OptionalSumExchage, EngineCapUOM, orignaldatereg
+                                OptionalSumExchage, EngineCapUOM, orignaldatereg, InMAWBOBL, OutMAWBOBL
                             FROM CommonItemDtl WHERE PermitId = %s
                         """, [new_permit_id, new_permit_id])
                     except Exception as err:
