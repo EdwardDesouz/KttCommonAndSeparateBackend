@@ -478,7 +478,7 @@ class PostCommonHeaderTable(APIView):
                 except (ValueError, TypeError):
                     gst_amt = 0.0
 
-                NON_SUBMIT_STATUSES = {"SAVEASDRF", "DRF", "DISCONNECT"}
+                NON_SUBMIT_STATUSES = {"SAVEASDRF", "DRF", "DISCONNECT","LLMNEW","LLMDRF","LLMQRY"}
 
                 if incoming_status in NON_SUBMIT_STATUSES:
                     item["Status"] = incoming_status
