@@ -82,6 +82,172 @@ class GetOutHeaderByPermitId(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
+# # Post outheader table
+# class PostOutHeaderTable(APIView):
+#     table = "OutHeaderTbl"
+#     allowed_columns = {
+#         "Refid", "JobId", "MSGId", "PermitId", "TradeNetMailboxID", "MessageType",
+#         "DeclarationType", "PreviousPermit", "CargoPackType", "InwardTransportMode",
+#         "OutwardTransportMode", "BGIndicator", "SupplyIndicator", "ReferenceDocuments",
+#         "License", "COType", "Entryyear", "GSPDonorCountry",
+#         "CerDetailtype1", "CerDetailCopies1", "CerDetailtype2", "CerDetailCopies2",
+#         "PerCommon", "CurrencyCode", "AddCerDtl", "TransDtl", "Recipient",
+#         "DeclarantCompanyCode", "ExporterCompanyCode", "Inwardcarriercode",
+#         "OutwardCarrierAgentCode", "FreightForwarderCode", "ImporterCompanyCode",
+#         "InwardCarrierAgentCode", "CONSIGNEECode", "EndUserCode", "Manufacturer",
+#         "ArrivalDate", "ArrivalTime", "LoadingPortCode", "VoyageNumber", "VesselName",
+#         "OceanBillofLadingNo", "ConveyanceRefNo", "TransportId", "FlightNO",
+#         "AircraftRegNo", "MasterAirwayBill", "ReleaseLocation", "RecepitLocation",
+#         "StorageLocation", "BlanketStartDate",
+#         "DepartureDate", "DepartureTime", "DischargePort", "FinalDestinationCountry",
+#         "OutVoyageNumber", "OutVesselName", "OutOceanBillofLadingNo",
+#         "VesselType", "VesselNetRegTon", "VesselNationality", "TowingVesselID",
+#         "TowingVesselName", "NextPort", "LastPort", "OutConveyanceRefNo",
+#         "OutTransportId", "OutFlightNO", "OutAircraftRegNo", "OutMasterAirwayBill",
+#         "TotalOuterPack", "TotalOuterPackUOM", "TotalGrossWeight", "TotalGrossWeightUOM",
+#         "GrossReference", "TradeRemarks", "InternalRemarks",
+#         "DeclareIndicator", "NumberOfItems", "TotalCIFFOBValue",
+#         "TotalGSTTaxAmt", "TotalExDutyAmt", "TotalCusDutyAmt", "TotalODutyAmt",
+#         "TotalAmtPay", "Status", "TouchUser", "TouchTime", "PermitNumber",
+#         "prmtStatus", "ResLoaName", "RepLocName", "RecepitLocName",
+#         "outHAWB", "INHAWB", "CertificateNumber", "Defrentprinting", "Cnb",
+#         "DeclarningFor", "MRDate", "MRTime", "CondColor", "TransmitId"
+#     }
+
+#     NULLABLE_COLUMNS = {
+#         "ArrivalDate", "ArrivalTime", "BlanketStartDate",
+#         "DepartureDate", "DepartureTime", "MRDate", "Refid",
+#     }
+
+#     def post(self, request):
+#         payloads = request.data
+#         if not payloads:
+#             return Response({"error": "No data provided"}, status=400)
+
+#         if not isinstance(payloads, list):
+#             payloads = [payloads]
+
+#         inserted_count = 0
+#         JobId = ""
+#         MsgId = ""
+
+#         try:
+#             for item in payloads:
+#                 PermitId = item.get("PermitId", "")
+#                 TouchUser = item.get("TouchUser", "")
+#                 TouchTime = item.get("TouchTime", "")
+#                 jobDate = datetime.now().strftime("%Y-%m-%d")
+#                 refDate  = datetime.now().strftime("%Y%m%d")
+#                 job_date = datetime.now().strftime("%y%m%d")
+
+#                 # Get AccountId
+#                 account_rows = SqlDb.execute_query(
+#                     "SELECT AccountId FROM ManageUser WHERE UserName = %s", [TouchUser]
+#                 )
+#                 if not account_rows:
+#                     return Response({"error": f"User '{TouchUser}' not found"}, status=404)
+#                 AccountId = account_rows[0]['AccountId']
+
+#                 # Check if this PermitId already saved (EDIT)
+#                 existing_pcount = SqlDb.execute_query(
+#                     "SELECT MsgId FROM PermitCount WHERE PermitId = %s", [PermitId]
+#                 )
+
+#                 if existing_pcount:
+#                     MsgId = existing_pcount[0]['MsgId']
+#                     existing_header = SqlDb.execute_query(
+#                         f"SELECT JobId FROM {self.table} WHERE PermitId = %s", [PermitId]
+#                     )
+#                     JobId = existing_header[0]['JobId'] if existing_header else item.get("JobId", "")
+#                 else:
+#                     count_rows = SqlDb.execute_query(
+#                         """
+#                         SELECT ISNULL(COUNT(*), 0) + 1 AS Count
+#                         FROM CommonHeaderTbl
+#                         WHERE JobId LIKE %s
+#                         """,
+#                         [f"K{job_date}%"]
+#                     )
+#                     count = count_rows[0]['Count'] if count_rows else 1
+
+#                     JobId = f"K{job_date}{count:05d}"
+#                     MsgId = f"{refDate}{count:04d}"
+
+#                     try:
+#                         SqlDb.execute_query(
+#                             """INSERT INTO PermitCount 
+#                             (PermitId, MessageType, AccountId, MsgId, TouchUser, TouchTime)
+#                             VALUES (%s, %s, %s, %s, %s, %s)""",
+#                             [PermitId, item.get("MessageType", ""), AccountId, MsgId, TouchUser, TouchTime]
+#                         )
+#                         SqlDb.commit()
+#                     except Exception:
+#                         SqlDb.execute_query("SELECT 1")
+#                         existing_fallback = SqlDb.execute_query(
+#                             "SELECT MsgId FROM PermitCount WHERE PermitId = %s", [PermitId]
+#                         )
+#                         if existing_fallback:
+#                             MsgId = existing_fallback[0]['MsgId']
+#                             existing_header = SqlDb.execute_query(
+#                                 f"SELECT JobId FROM {self.table} WHERE PermitId = %s", [PermitId]
+#                             )
+#                             JobId = existing_header[0]['JobId'] if existing_header else JobId
+
+#                 item["JobId"] = JobId
+#                 item["MSGId"] = MsgId
+
+#                 try:
+#                     gst_amt = float(item.get("TotalGSTTaxAmt") or 0)
+#                 except (ValueError, TypeError):
+#                     gst_amt = 0.0
+
+#                 if gst_amt > 10000:
+#                     item["Status"] = "WFA"
+
+#                 # ── Fixed sanitization: only nullable columns become None ──
+#                 sanitized_item = {}
+#                 for col in self.allowed_columns:
+#                     val = item.get(col)
+#                     if val == "" or val is None:
+#                         sanitized_item[col] = None if col in self.NULLABLE_COLUMNS else ""
+#                     else:
+#                         sanitized_item[col] = val
+
+#                 print("sanitized_item:", sanitized_item)
+
+#                 existing_header_check = SqlDb.execute_query(
+#                     f"SELECT 1 FROM {self.table} WHERE PermitId = %s", [PermitId]
+#                 )
+#                 if existing_header_check:
+#                     set_clause = ", ".join([f"{col} = %s" for col in sanitized_item.keys()])
+#                     values = list(sanitized_item.values()) + [PermitId]
+#                     SqlDb.execute_query(
+#                         f"UPDATE {self.table} SET {set_clause} WHERE PermitId = %s", values
+#                     )
+#                 else:
+#                     columns = ", ".join(sanitized_item.keys())
+#                     placeholders = ", ".join(["%s"] * len(sanitized_item))
+#                     SqlDb.execute_query(
+#                         f"INSERT INTO {self.table} ({columns}) VALUES ({placeholders})",
+#                         list(sanitized_item.values())
+#                     )
+
+#                 SqlDb.commit()
+#                 inserted_count += 1
+
+#             return Response(
+#                 {
+#                     "message": f"{inserted_count} record(s) saved successfully",
+#                     "JobId": JobId,
+#                     "MSGId": MsgId,
+#                 },
+#                 status=201
+#             )
+#         except Exception as e:
+#             import traceback
+#             traceback.print_exc()
+#             return Response({"error": f"Database Error: {str(e)}"}, status=400)
+
 # Post outheader table
 class PostOutHeaderTable(APIView):
     table = "OutHeaderTbl"
@@ -140,6 +306,11 @@ class PostOutHeaderTable(APIView):
                 refDate  = datetime.now().strftime("%Y%m%d")
                 job_date = datetime.now().strftime("%y%m%d")
 
+                # ✅ CommonHeaderTbl-la already irukka andha PermitId-oda exact JobId/MSGId fetch pannunga
+                common_header_row = SqlDb.execute_query(
+                    "SELECT JobId, MSGId FROM CommonHeaderTbl WHERE PermitId = %s", [PermitId]
+                )
+
                 # Get AccountId
                 account_rows = SqlDb.execute_query(
                     "SELECT AccountId FROM ManageUser WHERE UserName = %s", [TouchUser]
@@ -148,50 +319,72 @@ class PostOutHeaderTable(APIView):
                     return Response({"error": f"User '{TouchUser}' not found"}, status=404)
                 AccountId = account_rows[0]['AccountId']
 
-                # Check if this PermitId already saved (EDIT)
-                existing_pcount = SqlDb.execute_query(
-                    "SELECT MsgId FROM PermitCount WHERE PermitId = %s", [PermitId]
-                )
+                if common_header_row:
+                    # ✅ CommonHeaderTbl-la already irukka permit — adha JobId/MSGId exact-a copy pannunga
+                    JobId = common_header_row[0]['JobId']
+                    MsgId = common_header_row[0]['MSGId']
 
-                if existing_pcount:
-                    MsgId = existing_pcount[0]['MsgId']
-                    existing_header = SqlDb.execute_query(
-                        f"SELECT JobId FROM {self.table} WHERE PermitId = %s", [PermitId]
+                    # PermitCount-la row illati, insert pannunga (tracking-ku)
+                    existing_pcount_check = SqlDb.execute_query(
+                        "SELECT MsgId FROM PermitCount WHERE PermitId = %s", [PermitId]
                     )
-                    JobId = existing_header[0]['JobId'] if existing_header else item.get("JobId", "")
-                else:
-                    count_rows = SqlDb.execute_query(
-                        """
-                        SELECT ISNULL(COUNT(*), 0) + 1 AS Count
-                        FROM CommonHeaderTbl
-                        WHERE JobId LIKE %s
-                        """,
-                        [f"K{job_date}%"]
-                    )
-                    count = count_rows[0]['Count'] if count_rows else 1
-
-                    JobId = f"K{job_date}{count:05d}"
-                    MsgId = f"{refDate}{count:04d}"
-
-                    try:
-                        SqlDb.execute_query(
-                            """INSERT INTO PermitCount 
-                            (PermitId, MessageType, AccountId, MsgId, TouchUser, TouchTime)
-                            VALUES (%s, %s, %s, %s, %s, %s)""",
-                            [PermitId, item.get("MessageType", ""), AccountId, MsgId, TouchUser, TouchTime]
-                        )
-                        SqlDb.commit()
-                    except Exception:
-                        SqlDb.execute_query("SELECT 1")
-                        existing_fallback = SqlDb.execute_query(
-                            "SELECT MsgId FROM PermitCount WHERE PermitId = %s", [PermitId]
-                        )
-                        if existing_fallback:
-                            MsgId = existing_fallback[0]['MsgId']
-                            existing_header = SqlDb.execute_query(
-                                f"SELECT JobId FROM {self.table} WHERE PermitId = %s", [PermitId]
+                    if not existing_pcount_check:
+                        try:
+                            SqlDb.execute_query(
+                                """INSERT INTO PermitCount 
+                                (PermitId, MessageType, AccountId, MsgId, TouchUser, TouchTime)
+                                VALUES (%s, %s, %s, %s, %s, %s)""",
+                                [PermitId, item.get("MessageType", ""), AccountId, MsgId, TouchUser, TouchTime]
                             )
-                            JobId = existing_header[0]['JobId'] if existing_header else JobId
+                            SqlDb.commit()
+                        except Exception:
+                            pass
+
+                else:
+                    # CommonHeaderTbl-la illa (edge case) — fallback old logic
+                    existing_pcount = SqlDb.execute_query(
+                        "SELECT MsgId FROM PermitCount WHERE PermitId = %s", [PermitId]
+                    )
+
+                    if existing_pcount:
+                        MsgId = existing_pcount[0]['MsgId']
+                        existing_header = SqlDb.execute_query(
+                            f"SELECT JobId FROM {self.table} WHERE PermitId = %s", [PermitId]
+                        )
+                        JobId = existing_header[0]['JobId'] if existing_header else item.get("JobId", "")
+                    else:
+                        count_rows = SqlDb.execute_query(
+                            """
+                            SELECT ISNULL(COUNT(*), 0) + 1 AS Count
+                            FROM CommonHeaderTbl
+                            WHERE JobId LIKE %s
+                            """,
+                            [f"K{job_date}%"]
+                        )
+                        count = count_rows[0]['Count'] if count_rows else 1
+
+                        JobId = f"K{job_date}{count:05d}"
+                        MsgId = f"{refDate}{count:04d}"
+
+                        try:
+                            SqlDb.execute_query(
+                                """INSERT INTO PermitCount 
+                                (PermitId, MessageType, AccountId, MsgId, TouchUser, TouchTime)
+                                VALUES (%s, %s, %s, %s, %s, %s)""",
+                                [PermitId, item.get("MessageType", ""), AccountId, MsgId, TouchUser, TouchTime]
+                            )
+                            SqlDb.commit()
+                        except Exception:
+                            SqlDb.execute_query("SELECT 1")
+                            existing_fallback = SqlDb.execute_query(
+                                "SELECT MsgId FROM PermitCount WHERE PermitId = %s", [PermitId]
+                            )
+                            if existing_fallback:
+                                MsgId = existing_fallback[0]['MsgId']
+                                existing_header = SqlDb.execute_query(
+                                    f"SELECT JobId FROM {self.table} WHERE PermitId = %s", [PermitId]
+                                )
+                                JobId = existing_header[0]['JobId'] if existing_header else JobId
 
                 item["JobId"] = JobId
                 item["MSGId"] = MsgId
@@ -201,8 +394,8 @@ class PostOutHeaderTable(APIView):
                 except (ValueError, TypeError):
                     gst_amt = 0.0
 
-                if gst_amt > 10000:
-                    item["Status"] = "WFA"
+                # if gst_amt > 10000:
+                #     item["Status"] = "WFA"
 
                 # ── Fixed sanitization: only nullable columns become None ──
                 sanitized_item = {}

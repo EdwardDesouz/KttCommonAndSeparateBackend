@@ -134,6 +134,21 @@ DATABASES = {
 #     }
 # }
 
+# AzureDataBase
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'mssql',
+#         'NAME': 'Ktt_prod',
+#         'USER': 'ktt_sg',
+#         'PASSWORD': 'Ktt@20252025',
+#         'HOST': 'tcp:10.0.0.36,1433',
+#         'PORT': '',
+#         'OPTIONS': {
+#             'driver': 'ODBC Driver 17 for SQL Server',
+#         },
+#     }
+# }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
