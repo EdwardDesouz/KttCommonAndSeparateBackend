@@ -124,6 +124,164 @@ class InnonpaymentList(APIView):
             return Response({"error": str(e)}, status=500)
 
 
+# # New Permit
+# class InnonpaymentNewPermit(APIView):
+#     def get(self, request):
+#         try:
+#             Username = request.query_params.get("user")
+#             if not Username:
+#                 Username = request.session.get("Username")
+#             if not Username:
+#                 return Response({"error": "Session expired or User not provided"}, status=401)
+           
+#             refDate = datetime.now().strftime("%Y%m%d")
+#             yy_mmdd = datetime.now().strftime("%Y%m%d")
+#             currentDate = datetime.now().strftime("%d/%m/%Y")  
+
+#             q_account = "SELECT AccountId FROM ManageUser WHERE UserName = %s"
+
+#             account_rows = SqlDb.execute_query(q_account, [Username])
+#             if not account_rows:
+#                 return Response({"error": "User not found"}, status=404)
+#             AccountId = account_rows[0]['AccountId']
+
+#             # q_ref = """
+#             #     SELECT ISNULL(COUNT(*),0) + 1 as Count 
+#             #     FROM CommonHeaderTbl 
+#             #     WHERE MSGId LIKE %s AND MessageType = 'INPDEC'
+#             # """
+#             # ref_rows = SqlDb.execute_query(q_ref, [f"%{refDate}%"])
+#             # ref_rows = SqlDb.execute_query(q_ref, [f"{refDate}%"])
+
+#             # ref_rows = SqlDb.execute_query(
+#             #     """
+#             #     SELECT ISNULL(COUNT(*), 0) + 1 AS Count
+#             #     FROM CommonHeaderTbl
+#             #     WHERE PermitId LIKE %s
+#             #     """,
+#             #     [f"{Username}{refDate}%"]
+#             # )
+           
+           
+           
+#             # RefId = "%03d" % (ref_rows[0]['Count'] if ref_rows else 1)
+
+#             # q_job = """
+#             #     SELECT ISNULL(COUNT(*),0) + 1 as Count 
+#             #     FROM PermitCount 
+#             #     WHERE TouchTime LIKE %s AND AccountId = %s AND MessageType = 'INPDEC'
+#             # """
+
+#             # job_rows = SqlDb.execute_query(
+#                 # """
+#                 # # SELECT ISNULL(MAX(CAST(SUBSTRING(JobId, 2, 6) + RIGHT(JobId, 5) AS BIGINT)), 0) + 1 AS Count
+#                 # # FROM CommonHeaderTbl
+#                 # """
+#             # job_rows = SqlDb.execute_query(
+#             #     """
+#             #     SELECT ISNULL(COUNT(*),0) + 1 as Count 
+#             #     FROM PermitCount 
+#             #     WHERE TouchTime LIKE %s AND AccountId = %s AND MessageType = 'INPDEC'
+#             #     """,
+#             #     [f"{jobDate}%", AccountId] 
+#             # )
+#             # JobIdCount = job_rows[0]['Count'] if job_rows else 1
+#             # JobId = f"K{datetime.now().strftime('%y%m%d')}{JobIdCount:05d}"
+#             # mailbox_rows = SqlDb.execute_query(
+#             #     "SELECT MailBoxId FROM ManageUser WHERE UserName = %s",
+#             #     [Username]
+#             # )
+#             # MailBoxId = mailbox_rows[0]['MailBoxId'] if mailbox_rows else ""
+#             # msg_rows = SqlDb.execute_query(
+#             #     """
+#             #     SELECT ISNULL(MAX(CAST(RIGHT(MsgId, 4) AS INT)), 0) + 1 AS Count
+#             #     FROM PermitCount
+#             #     WHERE AccountId = %s
+#             #     """,
+#             #     [AccountId]
+#             # )
+#             # MsgCount = msg_rows[0]['Count'] if msg_rows else 1
+
+#             # MsgId = f"{datetime.now().strftime('%Y%m%d')}{MsgCount:04d}"
+
+#             # PermitId = f"{Username}{refDate}{RefId}"
+
+#             # print("PermitId:", PermitId)
+#             # print("JobId:", JobId)
+#             # print("MsgId:", MsgId)
+#             # print("RefId:", RefId)
+#             # print('AccountId:', AccountId)
+
+            
+#             count_rows = SqlDb.execute_query(
+#                 """
+#                 SELECT ISNULL(COUNT(*), 0) + 1 AS Count
+#                 FROM CommonHeaderTbl
+#                 WHERE PermitId LIKE %s
+#                 """,
+#                 [f"{Username}{refDate}%"]
+#             )
+#             count = count_rows[0]['Count'] if count_rows else 1
+
+#             # 3. All 3 IDs from same count
+#             RefId    = f"{count:03d}"
+#             PermitId = f"{Username}{refDate}{RefId}"
+#             JobId    = f"K{yy_mmdd}{count:05d}"
+#             MsgId    = f"{refDate}{count:04d}"
+
+#             print("PermitId:", PermitId, "| JobId:", JobId, "| MsgId:", MsgId, "| count:", count)
+
+
+#             query_join = """
+#                 SELECT TOP 1 
+#                     manageuser.LoginStatus, manageuser.DateLastUpdated, manageuser.MailBoxId, 
+#                     manageuser.SeqPool, SequencePool.StartSequence, DeclarantCompany.TradeNetMailboxID, 
+#                     DeclarantCompany.DeclarantName, DeclarantCompany.DeclarantCode, 
+#                     DeclarantCompany.DeclarantTel, DeclarantCompany.CRUEI, DeclarantCompany.Code, 
+#                     DeclarantCompany.name, DeclarantCompany.name1 
+#                 FROM manageuser 
+#                 INNER JOIN SequencePool ON manageuser.SeqPool = SequencePool.Description 
+#                 INNER JOIN DeclarantCompany ON DeclarantCompany.TradeNetMailboxID = ManageUser.MailBoxId 
+#                 WHERE ManageUser.UserName = %s
+#             """
+#             head_rows = SqlDb.execute_query(query_join, [Username])
+
+#             if not head_rows:
+#                 return Response({"error": "Company profile data not found"}, status=404)
+
+#             head = head_rows[0]
+
+#             return Response({
+#                 "UserName": Username,
+#                 "PermitId": PermitId,
+#                 "JobId": JobId,
+#                 "RefId": RefId,
+#                 "MsgId": MsgId,
+#                 "AccountId": AccountId,
+#                 "LoginStatus": head.get("LoginStatus", ""),
+#                 "DateLastUpdated": str(head.get("DateLastUpdated", "")),
+#                 "MailBoxId": head.get("MailBoxId", ""),
+#                 "SeqPool": head.get("SeqPool", ""),
+#                 "StartSequence": head.get("StartSequence", ""),
+#                 "TradeNetMailboxID": head.get("TradeNetMailboxID", ""),
+#                 "DeclarantName": head.get("DeclarantName", ""),
+#                 "DeclarantCode": head.get("DeclarantCode", ""),
+#                 "DeclarantTel": head.get("DeclarantTel", ""),
+#                 "CRUEI": head.get("CRUEI", ""),
+#                 "Code": head.get("Code", ""),
+#                 "name": head.get("name", ""),
+#                 "name1": head.get("name1", ""),
+#                 "PermitNumber": "",
+#                 "prmtStatus": "NEW",
+#                 "CurrentDate": currentDate
+#             })
+
+#         except Exception as e:
+#             print("--- DATABASE/LOGIC ERROR ---")
+#             traceback.print_exc()
+#             return Response({"error": str(e)}, status=500)
+
+
 # New Permit
 class InnonpaymentNewPermit(APIView):
     def get(self, request):
@@ -133,104 +291,50 @@ class InnonpaymentNewPermit(APIView):
                 Username = request.session.get("Username")
             if not Username:
                 return Response({"error": "Session expired or User not provided"}, status=401)
-            refDate = datetime.now().strftime("%Y%m%d")
-            yy_mmdd = datetime.now().strftime("%Y%m%d")
-            currentDate = datetime.now().strftime("%d/%m/%Y")  
 
+            refDate = datetime.now().strftime("%Y%m%d")       # 20260911 -> RefId/PermitId/MsgId ku
+            yy_mmdd = datetime.now().strftime("%y%m%d")        # 260911   -> JobId ku
+            jobDate = datetime.now().strftime("%Y-%m-%d")       # 2026-09-11 -> PermitCount.TouchTime match ku
+            currentDate = datetime.now().strftime("%d/%m/%Y")
+
+            # ── 1. AccountId ─────────────────────────────────────────────
             q_account = "SELECT AccountId FROM ManageUser WHERE UserName = %s"
-
             account_rows = SqlDb.execute_query(q_account, [Username])
             if not account_rows:
                 return Response({"error": "User not found"}, status=404)
             AccountId = account_rows[0]['AccountId']
 
-            # q_ref = """
-            #     SELECT ISNULL(COUNT(*),0) + 1 as Count 
-            #     FROM CommonHeaderTbl 
-            #     WHERE MSGId LIKE %s AND MessageType = 'INPDEC'
-            # """
-            # ref_rows = SqlDb.execute_query(q_ref, [f"%{refDate}%"])
-            # ref_rows = SqlDb.execute_query(q_ref, [f"{refDate}%"])
-
-            # ref_rows = SqlDb.execute_query(
-            #     """
-            #     SELECT ISNULL(COUNT(*), 0) + 1 AS Count
-            #     FROM CommonHeaderTbl
-            #     WHERE PermitId LIKE %s
-            #     """,
-            #     [f"{Username}{refDate}%"]
-            # )
-           
-           
-           
-            # RefId = "%03d" % (ref_rows[0]['Count'] if ref_rows else 1)
-
-            # q_job = """
-            #     SELECT ISNULL(COUNT(*),0) + 1 as Count 
-            #     FROM PermitCount 
-            #     WHERE TouchTime LIKE %s AND AccountId = %s AND MessageType = 'INPDEC'
-            # """
-
-            # job_rows = SqlDb.execute_query(
-                # """
-                # # SELECT ISNULL(MAX(CAST(SUBSTRING(JobId, 2, 6) + RIGHT(JobId, 5) AS BIGINT)), 0) + 1 AS Count
-                # # FROM CommonHeaderTbl
-                # """
-            # job_rows = SqlDb.execute_query(
-            #     """
-            #     SELECT ISNULL(COUNT(*),0) + 1 as Count 
-            #     FROM PermitCount 
-            #     WHERE TouchTime LIKE %s AND AccountId = %s AND MessageType = 'INPDEC'
-            #     """,
-            #     [f"{jobDate}%", AccountId] 
-            # )
-            # JobIdCount = job_rows[0]['Count'] if job_rows else 1
-            # JobId = f"K{datetime.now().strftime('%y%m%d')}{JobIdCount:05d}"
-            # mailbox_rows = SqlDb.execute_query(
-            #     "SELECT MailBoxId FROM ManageUser WHERE UserName = %s",
-            #     [Username]
-            # )
-            # MailBoxId = mailbox_rows[0]['MailBoxId'] if mailbox_rows else ""
-            # msg_rows = SqlDb.execute_query(
-            #     """
-            #     SELECT ISNULL(MAX(CAST(RIGHT(MsgId, 4) AS INT)), 0) + 1 AS Count
-            #     FROM PermitCount
-            #     WHERE AccountId = %s
-            #     """,
-            #     [AccountId]
-            # )
-            # MsgCount = msg_rows[0]['Count'] if msg_rows else 1
-
-            # MsgId = f"{datetime.now().strftime('%Y%m%d')}{MsgCount:04d}"
-
-            # PermitId = f"{Username}{refDate}{RefId}"
-
-            # print("PermitId:", PermitId)
-            # print("JobId:", JobId)
-            # print("MsgId:", MsgId)
-            # print("RefId:", RefId)
-            # print('AccountId:', AccountId)
-
-            
-            count_rows = SqlDb.execute_query(
+            # ── 2. RefId — CommonHeaderTbl vechi, Username+refDate scoped ──
+            ref_rows = SqlDb.execute_query(
                 """
                 SELECT ISNULL(COUNT(*), 0) + 1 AS Count
                 FROM CommonHeaderTbl
-                WHERE PermitId LIKE %s
+                WHERE PermitId LIKE %s AND MessageType = 'INPDEC'
                 """,
                 [f"{Username}{refDate}%"]
             )
-            count = count_rows[0]['Count'] if count_rows else 1
-
-            # 3. All 3 IDs from same count
-            RefId    = f"{count:03d}"
+            RefId = "%03d" % (ref_rows[0]['Count'] if ref_rows else 1)
             PermitId = f"{Username}{refDate}{RefId}"
-            JobId    = f"K{yy_mmdd}{count:05d}"
-            MsgId    = f"{refDate}{count:04d}"
 
-            print("PermitId:", PermitId, "| JobId:", JobId, "| MsgId:", MsgId, "| count:", count)
+            # ── 3. JobIdCount — PermitCount vechi, AccountId scoped (OLD LOGIC) ──
+            job_rows = SqlDb.execute_query(
+                """
+                SELECT ISNULL(COUNT(*), 0) + 1 AS Count
+                FROM PermitCount
+                WHERE TouchTime LIKE %s AND AccountId = %s AND MessageType = 'INPDEC'
+                """,
+                [f"%{jobDate}%", AccountId]
+            )
+            JobIdCount = job_rows[0]['Count'] if job_rows else 1
 
+            # ── 4. JobId + MsgId — SAME JobIdCount, different format (OLD LOGIC) ──
+            JobId = f"K{yy_mmdd}{'%05d' % JobIdCount}"
+            MsgId = f"{refDate}{'%04d' % JobIdCount}"
 
+            print("PermitId:", PermitId, "| JobId:", JobId, "| MsgId:", MsgId,
+                  "| RefId:", RefId, "| JobIdCount:", JobIdCount, "| AccountId:", AccountId)
+
+            # ── 5. Declarant/company profile info ────────────────────────
             query_join = """
                 SELECT TOP 1 
                     manageuser.LoginStatus, manageuser.DateLastUpdated, manageuser.MailBoxId, 
@@ -244,10 +348,8 @@ class InnonpaymentNewPermit(APIView):
                 WHERE ManageUser.UserName = %s
             """
             head_rows = SqlDb.execute_query(query_join, [Username])
-
             if not head_rows:
                 return Response({"error": "Company profile data not found"}, status=404)
-
             head = head_rows[0]
 
             return Response({

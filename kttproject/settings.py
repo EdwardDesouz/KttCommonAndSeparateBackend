@@ -105,6 +105,20 @@ WSGI_APPLICATION = 'kttproject.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'mssql',
+#         'NAME': 'TestKtt',
+#         'USER': 'sa',
+#         'PASSWORD': '123',
+#         'HOST': 'DESKTOP-8C3ORM9',   
+#         'PORT': '',
+#         'OPTIONS': {
+#             'driver': 'ODBC Driver 17 for SQL Server',
+#            },
+#     }
+# }
+
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
