@@ -309,7 +309,7 @@ class InnonpaymentNewPermit(APIView):
                 """
                 SELECT ISNULL(COUNT(*), 0) + 1 AS Count
                 FROM CommonHeaderTbl
-                WHERE PermitId LIKE %s AND MessageType = 'INPDEC'
+                WHERE PermitId LIKE %s 
                 """,
                 [f"{Username}{refDate}%"]
             )
@@ -321,7 +321,7 @@ class InnonpaymentNewPermit(APIView):
                 """
                 SELECT ISNULL(COUNT(*), 0) + 1 AS Count
                 FROM PermitCount
-                WHERE TouchTime LIKE %s AND AccountId = %s AND MessageType = 'INPDEC'
+                WHERE TouchTime LIKE %s AND AccountId = %s
                 """,
                 [f"%{jobDate}%", AccountId]
             )

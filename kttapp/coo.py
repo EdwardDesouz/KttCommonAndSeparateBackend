@@ -282,106 +282,103 @@ class CooList(APIView):
 
 # New Permit
 class CooNewPermit(APIView):
-    print('hello')
     def get(self, request):
-        try:
-            Username = request.query_params.get("user")
-            if not Username:
-                Username = request.session.get("Username")
-            if not Username:
-                return Response({"error": "Session expired or User not provided"}, status=401)
-            refDate = datetime.now().strftime("%Y%m%d")
-            yy_mmdd = datetime.now().strftime("%Y-%m-%d")
-            currentDate = datetime.now().strftime("%d/%m/%Y")  
+            try:
+                Username = request.query_params.get("user")
+                if not Username:
+                    Username = request.session.get("Username")
+                if not Username:
+                    return Response({"error": "Session expired or User not provided"}, status=401)
 
-            q_account = "SELECT AccountId FROM ManageUser WHERE UserName = %s"
+                refDate = datetime.now().strftime("%Y%m%d")       # 20260911 -> RefId/PermitId/MsgId ku
+                yy_mmdd = datetime.now().strftime("%y%m%d")        # 260911   -> JobId ku
+                jobDate = datetime.now().strftime("%Y-%m-%d")       # 2026-09-11 -> PermitCount.TouchTime match ku
+                currentDate = datetime.now().strftime("%d/%m/%Y")
 
-            account_rows = SqlDb.execute_query(q_account, [Username])
-            if not account_rows:
-                return Response({"error": "User not found"}, status=404)
-            AccountId = account_rows[0]['AccountId']
+                # ── 1. AccountId ─────────────────────────────────────────────
+                q_account = "SELECT AccountId FROM ManageUser WHERE UserName = %s"
+                account_rows = SqlDb.execute_query(q_account, [Username])
+                if not account_rows:
+                    return Response({"error": "User not found"}, status=404)
+                AccountId = account_rows[0]['AccountId']
 
-            # 1. PER-USER count -> PermitId / RefId
-            count_rows = SqlDb.execute_query(
+                # ── 2. RefId — CommonHeaderTbl vechi, Username+refDate scoped (NO MessageType filter) ──
+                ref_rows = SqlDb.execute_query(
+                    """
+                    SELECT ISNULL(COUNT(*), 0) + 1 AS Count
+                    FROM CommonHeaderTbl
+                    WHERE PermitId LIKE %s
+                    """,
+                    [f"{Username}{refDate}%"]
+                )
+                RefId = "%03d" % (ref_rows[0]['Count'] if ref_rows else 1)
+                PermitId = f"{Username}{refDate}{RefId}"
+
+                # ── 3. JobIdCount — PermitCount vechi, AccountId scoped (NO MessageType filter) ──
+                job_rows = SqlDb.execute_query(
+                    """
+                    SELECT ISNULL(COUNT(*), 0) + 1 AS Count
+                    FROM PermitCount
+                    WHERE TouchTime LIKE %s AND AccountId = %s
+                    """,
+                    [f"%{jobDate}%", AccountId]
+                )
+                JobIdCount = job_rows[0]['Count'] if job_rows else 1
+
+                # ── 4. JobId + MsgId — SAME JobIdCount, different format ──
+                JobId = f"K{yy_mmdd}{'%05d' % JobIdCount}"
+                MsgId = f"{refDate}{'%04d' % JobIdCount}"
+
+                print("PermitId:", PermitId, "| JobId:", JobId, "| MsgId:", MsgId,
+                    "| RefId:", RefId, "| JobIdCount:", JobIdCount, "| AccountId:", AccountId)
+
+                # ── 5. Declarant/company profile info ────────────────────────
+                query_join = """
+                    SELECT TOP 1 
+                        manageuser.LoginStatus, manageuser.DateLastUpdated, manageuser.MailBoxId, 
+                        manageuser.SeqPool, SequencePool.StartSequence, DeclarantCompany.TradeNetMailboxID, 
+                        DeclarantCompany.DeclarantName, DeclarantCompany.DeclarantCode, 
+                        DeclarantCompany.DeclarantTel, DeclarantCompany.CRUEI, DeclarantCompany.Code, 
+                        DeclarantCompany.name, DeclarantCompany.name1 
+                    FROM manageuser 
+                    INNER JOIN SequencePool ON manageuser.SeqPool = SequencePool.Description 
+                    INNER JOIN DeclarantCompany ON DeclarantCompany.TradeNetMailboxID = ManageUser.MailBoxId 
+                    WHERE ManageUser.UserName = %s
                 """
-                SELECT ISNULL(COUNT(*), 0) + 1 AS Count
-                FROM CommonHeaderTbl
-                WHERE PermitId LIKE %s
-                """,
-                [f"{Username}{refDate}%"]
-            )
-            count = count_rows[0]['Count'] if count_rows else 1
+                head_rows = SqlDb.execute_query(query_join, [Username])
+                if not head_rows:
+                    return Response({"error": "Company profile data not found"}, status=404)
+                head = head_rows[0]
 
-            RefId    = f"{count:03d}"
-            PermitId = f"{Username}{refDate}{RefId}"
+                return Response({
+                    "UserName": Username,
+                    "PermitId": PermitId,
+                    "JobId": JobId,
+                    "RefId": RefId,
+                    "MsgId": MsgId,
+                    "AccountId": AccountId,
+                    "LoginStatus": head.get("LoginStatus", ""),
+                    "DateLastUpdated": str(head.get("DateLastUpdated", "")),
+                    "MailBoxId": head.get("MailBoxId", ""),
+                    "SeqPool": head.get("SeqPool", ""),
+                    "StartSequence": head.get("StartSequence", ""),
+                    "TradeNetMailboxID": head.get("TradeNetMailboxID", ""),
+                    "DeclarantName": head.get("DeclarantName", ""),
+                    "DeclarantCode": head.get("DeclarantCode", ""),
+                    "DeclarantTel": head.get("DeclarantTel", ""),
+                    "CRUEI": head.get("CRUEI", ""),
+                    "Code": head.get("Code", ""),
+                    "name": head.get("name", ""),
+                    "name1": head.get("name1", ""),
+                    "PermitNumber": "",
+                    "prmtStatus": "NEW",
+                    "CurrentDate": currentDate
+                })
 
-            # 2. GLOBAL count (all users, today) -> JobId / MsgId
-            job_date = datetime.now().strftime("%y%m%d")  # matches K260610xxxxx format
-
-            global_count_rows = SqlDb.execute_query(
-                """
-                SELECT ISNULL(COUNT(*), 0) + 1 AS Count
-                FROM CommonHeaderTbl
-                WHERE JobId LIKE %s
-                """,
-                [f"K{job_date}%"]
-            )
-            global_count = global_count_rows[0]['Count'] if global_count_rows else 1
-
-            JobId = f"K{job_date}{global_count:05d}"
-            MsgId = f"{refDate}{global_count:04d}"
-
-            print("PermitId:", PermitId, "| JobId:", JobId, "| MsgId:", MsgId,
-                  "| count:", count, "| global_count:", global_count)
-
-            query_join = """
-                SELECT TOP 1 
-                    manageuser.LoginStatus, manageuser.DateLastUpdated, manageuser.MailBoxId, 
-                    manageuser.SeqPool, SequencePool.StartSequence, DeclarantCompany.TradeNetMailboxID, 
-                    DeclarantCompany.DeclarantName, DeclarantCompany.DeclarantCode, 
-                    DeclarantCompany.DeclarantTel, DeclarantCompany.CRUEI, DeclarantCompany.Code, 
-                    DeclarantCompany.name, DeclarantCompany.name1 
-                FROM manageuser 
-                INNER JOIN SequencePool ON manageuser.SeqPool = SequencePool.Description 
-                INNER JOIN DeclarantCompany ON DeclarantCompany.TradeNetMailboxID = ManageUser.MailBoxId 
-                WHERE ManageUser.UserName = %s
-            """
-            head_rows = SqlDb.execute_query(query_join, [Username])
-
-            if not head_rows:
-                return Response({"error": "Company profile data not found"}, status=404)
-
-            head = head_rows[0]
-
-            return Response({
-                "UserName": Username,
-                "PermitId": PermitId,
-                "JobId": JobId,
-                "RefId": RefId,
-                "MsgId": MsgId,
-                "AccountId": AccountId,
-                "LoginStatus": head.get("LoginStatus", ""),
-                "DateLastUpdated": str(head.get("DateLastUpdated", "")),
-                "MailBoxId": head.get("MailBoxId", ""),
-                "SeqPool": head.get("SeqPool", ""),
-                "StartSequence": head.get("StartSequence", ""),
-                "TradeNetMailboxID": head.get("TradeNetMailboxID", ""),
-                "DeclarantName": head.get("DeclarantName", ""),
-                "DeclarantCode": head.get("DeclarantCode", ""),
-                "DeclarantTel": head.get("DeclarantTel", ""),
-                "CRUEI": head.get("CRUEI", ""),
-                "Code": head.get("Code", ""),
-                "name": head.get("name", ""),
-                "name1": head.get("name1", ""),
-                "PermitNumber": "",
-                "prmtStatus": "NEW",
-                "CurrentDate": currentDate
-            })
-
-        except Exception as e:
-            print("--- DATABASE/LOGIC ERROR ---")
-            traceback.print_exc()
-            return Response({"error": str(e)}, status=500)
+            except Exception as e:
+                print("--- DATABASE/LOGIC ERROR ---")
+                traceback.print_exc()
+                return Response({"error": str(e)}, status=500)
 
 
 # class CopyCoo(APIView):
