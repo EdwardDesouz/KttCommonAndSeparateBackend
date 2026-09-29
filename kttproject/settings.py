@@ -68,6 +68,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
+    "http://localhost:5175",
     "http://192.168.1.40:5174",
     "http://192.168.1.40:5173"
 ]
@@ -133,7 +134,7 @@ DATABASES = {
     }
 }
 
-
+# # ssd database
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'mssql',
