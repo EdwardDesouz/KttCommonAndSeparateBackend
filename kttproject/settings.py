@@ -70,7 +70,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5174",
     "http://localhost:5175",
     "http://192.168.1.40:5174",
-    "http://192.168.1.40:5173"
+    "http://192.168.1.40:5173",
+    # "https://raven-frontend-bxuxq9y04-edward23446-gmailcoms-projects.vercel.app/"
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -134,7 +135,7 @@ DATABASES = {
     }
 }
 
-# # ssd database
+# ssd database
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'mssql',
