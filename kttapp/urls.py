@@ -60,6 +60,7 @@ urlpatterns = [
     path('postCommonHouseItemCode/',views.PostCommonHouseItemCode.as_view()),
     path('editCommonHouseItemCode/<str:housecode>/',views.EditCommonHouseItemCode.as_view()),
     path('deleteCommonHouseItemCode/<str:housecode>/',views.DeleteCommonHouseItemCode.as_view()),
+    path('searchHsCode/', views.SearchHsCode.as_view()),
     #importer
     path('getCommonImporterTableInfo/', views.GetCommonImporterTabel.as_view()),
     path('getImporter/<str:code>/', views.GetCommonImporterByCode.as_view()),

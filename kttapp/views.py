@@ -14803,3 +14803,26 @@ class PostItemWithCascTable(APIView):
             response_data["Warning"] = " | ".join(warnings)
 
         return Response(response_data, status=201)
+
+
+class SearchHsCode(APIView):
+    def get(self, request):
+        q      = (request.GET.get("q") or "").strip()
+        exact  = (request.GET.get("exact") or "").strip()
+        codes  = [c.strip() for c in (request.GET.get("codes") or "").split(",") if c.strip()]
+        if exact:                       # used on blur
+            rows = SqlDb.execute_query(
+                "SELECT TOP 1 * FROM Hscode WHERE HSCode = %s", [exact])
+        elif codes:                     # used for saved items (controlled flag, edit mode)
+            ph = ",".join(["%s"] * len(codes))
+            rows = SqlDb.execute_query(
+                f"SELECT * FROM Hscode WHERE HSCode IN ({ph})", codes)
+        elif q:                         # used while typing
+            rows = SqlDb.execute_query(
+                """SELECT TOP 50 * FROM Hscode
+                   WHERE HSCode LIKE %s OR Description LIKE %s
+                   ORDER BY HSCode""",
+                [f"{q}%", f"%{q}%"])
+        else:
+            rows = []
+        return Response(rows)
