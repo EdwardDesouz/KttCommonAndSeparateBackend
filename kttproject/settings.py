@@ -120,20 +120,22 @@ WSGI_APPLICATION = 'kttproject.wsgi.application'
 #            },
 #     }
 # }
-
+# Blue Host
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
-        'NAME': 'TestKtt',
+        'NAME': 'Ktt_Trail',
         'USER': 'sa',
-        'PASSWORD': '123',
-        'HOST': 'DESKTOP-8C3ORM9',   
+        'PASSWORD': 'KttNew@2026',
+        'HOST': '129.121.129.99,1433',  
         'PORT': '',
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',
            },
     }
 }
+
+
 
 # ssd database
 # DATABASES = {
@@ -164,6 +166,8 @@ DATABASES = {
 #         },
 #     }
 # }
+
+
 
 
 # Password validation
