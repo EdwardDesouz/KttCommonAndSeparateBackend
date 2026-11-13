@@ -71,6 +71,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5175",
     "http://192.168.1.40:5174",
     "http://192.168.1.40:5173",
+    "http://192.168.1.40:5175",
     # "https://raven-frontend-bxuxq9y04-edward23446-gmailcoms-projects.vercel.app/"
 ]
 
@@ -121,19 +122,19 @@ WSGI_APPLICATION = 'kttproject.wsgi.application'
 #     }
 # }
 # Blue Host
-DATABASES = {
-    'default': {
-        'ENGINE': 'mssql',
-        'NAME': 'Ktt_Trail',
-        'USER': 'sa',
-        'PASSWORD': 'KttNew@2026',
-        'HOST': '129.121.129.99,1433',  
-        'PORT': '',
-        'OPTIONS': {
-            'driver': 'ODBC Driver 17 for SQL Server',
-           },
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'mssql',
+#         'NAME': 'Ktt_Trail',
+#         'USER': 'sa',
+#         'PASSWORD': 'KttNew@2026',
+#         'HOST': '129.121.129.99,1433',  
+#         'PORT': '',
+#         'OPTIONS': {
+#             'driver': 'ODBC Driver 17 for SQL Server',
+#            },
+#     }
+# }
 
 
 
@@ -152,20 +153,23 @@ DATABASES = {
 #     }
 # }
 
-# AzureDataBase
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'mssql',
-#         'NAME': 'Ktt_prod',
-#         'USER': 'ktt_sg',
-#         'PASSWORD': 'Ktt@20252025',
-#         'HOST': 'tcp:10.0.0.36,1433',
-#         'PORT': '',
-#         'OPTIONS': {
-#             'driver': 'ODBC Driver 17 for SQL Server',
-#         },
-#     }
-# }
+# AzureDataBase Live
+DATABASES = {
+    'default': {
+        'ENGINE': 'mssql',
+        'NAME': 'Ktt_prod',
+        'USER': 'ktt_sg',
+        'PASSWORD': 'Ktt@20252025',
+        'HOST': 'tcp:10.0.0.36,1433',  
+        'PORT': '',
+        'OPTIONS': {
+            'driver': 'ODBC Driver 17 for SQL Server',
+           },
+    }
+}
+
+
+
 
 
 
